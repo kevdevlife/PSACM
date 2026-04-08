@@ -2,107 +2,577 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: sans-serif; padding: 12px; width: 420px; }
-        button { width: 100%; padding: 8px; margin-bottom: 12px; cursor: pointer; }
-        
-        .filter-section {
-            margin-bottom: 12px;
-            padding: 10px;
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+        :root {
+            --bg-primary: #18191c;
+            --bg-secondary: #222428;
+            --bg-tertiary: #2a2d33;
+            --accent-primary: #7c9cbf;
+            --accent-secondary: #a0856b;
+            --accent-success: #7aab8a;
+            --text-primary: #dde1e7;
+            --text-secondary: #8f96a3;
+            --text-muted: #5a6070;
+            --border-color: #32363e;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+            --shadow-glow: 0 0 16px rgba(124, 156, 191, 0.15);
         }
-        
-        .filter-section h4 {
-            margin: 0 0 8px 0;
-            font-size: 14px;
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        
-        .company-filters {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 6px;
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, #0d1321 100%);
+            color: var(--text-primary);
+            width: 440px;
+            height: 600px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
-        
-        .company-checkbox {
+
+        /* ---- HEADER ---- */
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .header-left h3 {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
+        }
+
+        .header-subtitle {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* ---- FILTER TOGGLE BUTTON ---- */
+        .filter-toggle-btn {
             display: flex;
             align-items: center;
             gap: 6px;
-            font-size: 13px;
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'DM Sans', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
         }
-        
+
+        .filter-toggle-btn:hover {
+            border-color: var(--accent-primary);
+            color: var(--text-primary);
+        }
+
+        .filter-toggle-btn.active {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            background: rgba(124, 156, 191, 0.08);
+        }
+
+        .filter-toggle-btn .filter-count {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            font-size: 9px;
+            font-weight: 700;
+            border-radius: 10px;
+            padding: 1px 5px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ---- COLLAPSIBLE FILTER SECTION ---- */
+        .filter-section {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            overflow: hidden;
+            max-height: 0;
+            transition: max-height 0.25s ease-out, padding 0.25s ease-out;
+            padding: 0 16px;
+            flex-shrink: 0;
+        }
+
+        .filter-section.open {
+            max-height: 160px;
+            padding: 14px 16px;
+        }
+
+        .company-filters {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .company-checkbox {
+            position: relative;
+        }
+
         .company-checkbox input {
+            position: absolute;
+            opacity: 0;
             cursor: pointer;
         }
-        
-        .company-checkbox label {
+
+        .company-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 2px;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
             cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             user-select: none;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
-        
+
+        .company-checkbox input:checked + .company-label {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: var(--bg-primary);
+            box-shadow: none;
+        }
+
+        .company-checkbox input:not(:checked) + .company-label:hover {
+            border-color: var(--text-muted);
+            background: var(--bg-primary);
+        }
+
         .filter-actions {
             display: flex;
-            gap: 6px;
-            margin-top: 8px;
+            gap: 8px;
         }
-        
+
         .filter-actions button {
             flex: 1;
-            padding: 4px;
-            font-size: 12px;
-            margin: 0;
+            padding: 5px 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'DM Sans', sans-serif;
         }
-        
-        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
-        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-        th { background: #f0f0f0; }
-        a { color: #0077cc; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .grade { font-weight: bold; }
+
+        .filter-actions button:hover {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border-color: var(--text-muted);
+        }
+
+        /* ---- ACTION BUTTONS ---- */
+        .action-buttons {
+            padding: 10px 16px;
+            display: flex;
+            gap: 10px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            font-family: 'DM Sans', sans-serif;
+            letter-spacing: 0.3px;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before { left: 100%; }
+
+        .btn-primary {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            box-shadow: none;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            background: #8faec8;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-primary);
+            border-color: var(--accent-primary);
+            transform: translateY(-1px);
+        }
+
+        /* ---- RESULTS AREA ---- */
+        /* Wrapper fills remaining space, owns the scroll */
+        .results-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-primary);
+        }
+
+        /* Stats bar is sticky (outside the scroll) */
+        .stats-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .stats-bar b {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .stats-number {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        /* Thead is also sticky (outside the scroll) */
+        .table-head-wrapper {
+            flex-shrink: 0;
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .table-head-wrapper table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        /* Scrollable body */
+        .output-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 16px 12px;
+        }
+
+        .output-container::-webkit-scrollbar { width: 6px; }
+        .output-container::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        .output-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        .output-container::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* Non-table states (empty, loading) */
+        .output-container.no-table {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ---- TABLES ---- */
+        /* Normal scan table (no card column) */
+        table.scan-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 6px;
+            font-size: 12px;
+            table-layout: fixed;
+        }
+
+        /* Favorites table (with card column) */
+        table.fav-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 6px;
+            font-size: 12px;
+            table-layout: fixed;
+        }
+
+        /* Column widths — scan */
+        table.scan-table th:nth-child(1), table.scan-table td:nth-child(1) { width: 60px; } /* Grader */
+        table.scan-table th:nth-child(2), table.scan-table td:nth-child(2) { width: 80px; } /* Grade */
+        table.scan-table th:nth-child(3), table.scan-table td:nth-child(3) { width: auto; } /* Price */
+        table.scan-table th:nth-child(4), table.scan-table td:nth-child(4) { width: 36px; text-align: center; } /* Star */
+
+        /* Column widths — favorites */
+        table.fav-table th:nth-child(1), table.fav-table td:nth-child(1) { width: 110px; } /* Card */
+        table.fav-table th:nth-child(2), table.fav-table td:nth-child(2) { width: 54px; } /* Grader */
+        table.fav-table th:nth-child(3), table.fav-table td:nth-child(3) { width: 72px; } /* Grade */
+        table.fav-table th:nth-child(4), table.fav-table td:nth-child(4) { width: auto; } /* Price */
+        table.fav-table th:nth-child(5), table.fav-table td:nth-child(5) { width: 32px; text-align: center; } /* Star */
+
+        tr.clickable-row { cursor: pointer; }
+
+        /* Shared header cell */
+        .table-head-wrapper th {
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            background: var(--bg-secondary);
+        }
+
+        /* Body rows */
+        tbody tr {
+            background: var(--bg-secondary);
+            transition: all 0.2s ease;
+            animation: fadeIn 0.3s ease-out backwards;
+        }
+
+        tbody tr:nth-child(1) { animation-delay: 0.04s; }
+        tbody tr:nth-child(2) { animation-delay: 0.08s; }
+        tbody tr:nth-child(3) { animation-delay: 0.12s; }
+        tbody tr:nth-child(4) { animation-delay: 0.16s; }
+        tbody tr:nth-child(5) { animation-delay: 0.20s; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        tbody tr:hover {
+            background: var(--bg-tertiary);
+            transform: translateX(3px);
+            box-shadow: var(--shadow-sm);
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Card name cell allows wrapping on two lines */
+        td.card-name {
+            white-space: normal;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.3;
+        }
+
+        tbody tr td:first-child {
+            border-left: 3px solid transparent;
+            border-top-left-radius: 6px;
+            border-bottom-left-radius: 6px;
+        }
+
+        tbody tr:hover td:first-child { border-left-color: var(--accent-primary); }
+
+        tbody tr td:last-child {
+            border-top-right-radius: 6px;
+            border-bottom-right-radius: 6px;
+        }
+
+        /* ---- BADGES & VALUES ---- */
         .grader-badge {
             display: inline-block;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: bold;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
             color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .grade {
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--accent-success);
+        }
+
+        .price {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--accent-primary);
+        }
+
+        a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        a:hover {
+            color: var(--accent-success);
+        }
+
+        .jumpLink {
+            display: inline-block;
+            font-size: 14px;
+            padding: 2px 4px;
+        }
+
+        .favStar {
+            display: inline-block;
+            font-size: 16px;
+            padding: 2px 4px;
+            filter: grayscale(100%);
+            opacity: 0.45;
+            transition: all 0.2s ease;
+        }
+
+        .favStar:hover {
+            filter: grayscale(0%);
+            opacity: 1;
+            transform: scale(1.2) rotate(72deg);
+        }
+
+        tbody tr:hover .favStar { opacity: 0.75; }
+
+        /* ---- EMPTY / LOADING ---- */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 44px;
+            margin-bottom: 14px;
+            opacity: 0.3;
+        }
+
+        .empty-state-text {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .loading-spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 14px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
         }
     </style>
 </head>
 <body>
-    <h3>Cardmarket Grading Scanner</h3>
-    
-    <div class="filter-section">
-        <h4>Filter by Grading Company:</h4>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-left">
+            <h3>Grading Scanner</h3>
+            <div class="header-subtitle">Find graded cards on Cardmarket</div>
+        </div>
+        <button class="filter-toggle-btn" id="filterToggleBtn">
+            Filters <span class="filter-count" id="filterCount">7</span>
+        </button>
+    </div>
+
+    <!-- COLLAPSIBLE FILTER SECTION -->
+    <div class="filter-section" id="filterSection">
         <div class="company-filters">
             <div class="company-checkbox">
                 <input type="checkbox" id="psa" value="PSA" checked>
-                <label for="psa">PSA</label>
+                <label for="psa" class="company-label">PSA</label>
             </div>
             <div class="company-checkbox">
                 <input type="checkbox" id="cgc" value="CGC" checked>
-                <label for="cgc">CGC</label>
+                <label for="cgc" class="company-label">CGC</label>
             </div>
             <div class="company-checkbox">
                 <input type="checkbox" id="bgs" value="BGS" checked>
-                <label for="bgs">BGS</label>
+                <label for="bgs" class="company-label">BGS</label>
             </div>
             <div class="company-checkbox">
                 <input type="checkbox" id="tag" value="TAG" checked>
-                <label for="tag">TAG</label>
+                <label for="tag" class="company-label">TAG</label>
             </div>
             <div class="company-checkbox">
                 <input type="checkbox" id="ace" value="ACE" checked>
-                <label for="ace">ACE</label>
+                <label for="ace" class="company-label">ACE</label>
             </div>
             <div class="company-checkbox">
                 <input type="checkbox" id="mnt" value="MNT" checked>
-                <label for="mnt">MNT</label>
+                <label for="mnt" class="company-label">MNT</label>
             </div>
             <div class="company-checkbox">
                 <input type="checkbox" id="sgc" value="SGC" checked>
-                <label for="sgc">SGC</label>
+                <label for="sgc" class="company-label">SGC</label>
             </div>
         </div>
         <div class="filter-actions">
@@ -110,10 +580,25 @@
             <button id="deselectAll">Deselect All</button>
         </div>
     </div>
-    
-    <button id="scan">Scan Page</button>
-    <button id="toggleFavs">Show Favorites</button>
-    <div id="output">Click "Scan Page" to start.</div>
+
+    <!-- ACTION BUTTONS -->
+    <div class="action-buttons">
+        <button id="scan" class="btn btn-primary">Scan Page</button>
+        <button id="toggleFavs" class="btn btn-secondary">Favorites</button>
+    </div>
+
+    <!-- RESULTS AREA: stats bar + sticky thead + scrollable tbody -->
+    <div class="results-wrapper" id="resultsWrapper">
+        <!-- Stats bar injected here by JS when results arrive -->
+        <!-- Sticky thead injected here by JS -->
+        <!-- Scrollable output -->
+        <div class="output-container no-table" id="output">
+            <div class="empty-state">
+                <div class="empty-state-icon">🔍</div>
+                <div class="empty-state-text">Click "Scan Page" to find graded cards</div>
+            </div>
+        </div>
+    </div>
 
     <script src="popup.js"></script>
 </body>

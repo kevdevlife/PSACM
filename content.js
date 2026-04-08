@@ -1,5 +1,4 @@
 console.log("[Grading Scanner] content script active");
-console.log("window.location.hash", window.location.hash);
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -25,10 +24,6 @@ async function scrollToSellerFromHash() {
     const sellerAnchor = window.location.hash.slice(1);
     if (!sellerAnchor) return;
 
-    if (typeof loadAllResults === "function") {
-        await loadAllResults();
-    }
-
     const links = document.querySelectorAll(".seller-name a");
     const match = Array.from(links).find(
         link => link.textContent.trim().toLowerCase() === sellerAnchor.toLowerCase()
@@ -39,47 +34,38 @@ async function scrollToSellerFromHash() {
     if (!row) return;
 
     row.scrollIntoView({ behavior: "smooth", block: "center" });
-
     row.style.transition = "all 0.6s ease";
-    row.style.backgroundColor = "#ffef9f";
-    row.style.border = "2px solid #ffb347";
+    row.style.outline = "2px solid #7c9cbf";
     row.style.borderRadius = "4px";
 
     setTimeout(() => {
-        row.style.backgroundColor = "";
-        row.style.border = "";
+        row.style.outline = "";
         row.style.borderRadius = "";
     }, 2000);
 }
 
-/* Run immediately (load event often never fires in content scripts) */
 scrollToSellerFromHash();
-
-/* Also react when popup updates the hash */
 window.addEventListener("hashchange", scrollToSellerFromHash);
 
 /* -----------------------------
-           LOAD ALL RESULTS
+        LOAD ALL RESULTS
 ------------------------------ */
 
 async function loadAllResults() {
     let clicks = 0;
-
     while (true) {
         const btn = document.querySelector("#loadMoreButton");
         if (!btn || btn.offsetParent === null || btn.disabled) break;
-
         btn.click();
         clicks++;
         await wait(100);
     }
-
     await wait(100);
     return clicks;
 }
 
 /* -----------------------------
-        GRADING SCAN HANDLER
+       GRADING SCAN HANDLER
 ------------------------------ */
 
 function scanGradedCards(enabledCompanies = null) {
@@ -89,8 +75,7 @@ function scanGradedCards(enabledCompanies = null) {
         document.querySelector(".page-title-container > div > h1")?.innerText?.trim() ||
         "Unknown";
 
-    // If no filter specified, use all companies
-    const companiesToScan = enabledCompanies 
+    const companiesToScan = enabledCompanies
         ? GRADING_PATTERNS.filter(p => enabledCompanies.includes(p.name))
         : GRADING_PATTERNS;
 
@@ -99,16 +84,13 @@ function scanGradedCards(enabledCompanies = null) {
         if (!commentSpan) return;
 
         const text = commentSpan.innerText.toLowerCase();
-        
-        // Check each grading company
+
         for (const grader of companiesToScan) {
             const match = text.match(grader.pattern);
             if (!match) continue;
 
             const priceElement = row.querySelector(".price-container .text-end");
-            const price = priceElement
-                ? priceElement.textContent.trim()
-                : "N/A";
+            const price = priceElement ? priceElement.textContent.trim() : "N/A";
 
             const sellerLink = row.querySelector(".seller-name a");
             const sellerText = sellerLink
@@ -133,7 +115,6 @@ function scanGradedCards(enabledCompanies = null) {
                 url: a.href
             });
 
-            // Only match once per row (first grading company found)
             break;
         }
     });
@@ -141,12 +122,113 @@ function scanGradedCards(enabledCompanies = null) {
     return results;
 }
 
+/* -----------------------------
+      PAGE INJECTION / BADGES
+------------------------------ */
+
+function injectPageHighlights(gradedHits) {
+    // Remove any previously injected badges (re-scan scenario)
+    document.querySelectorAll(".gs-grade-badge").forEach(el => el.remove());
+    document.querySelectorAll(".article-row").forEach(row => {
+        row.style.borderLeft = "";
+    });
+
+    gradedHits.forEach(hit => {
+        // Find the row by its anchor
+        const anchor = document.querySelector(`a[name="${hit.anchorName}"]`);
+        if (!anchor) return;
+        const row = anchor.closest(".article-row");
+        if (!row) return;
+
+        // Colored left border
+        row.style.borderLeft = `3px solid ${hit.color}`;
+        row.style.paddingLeft = "4px";
+
+        // Grade badge injected next to the seller comment
+        const commentSpan = row.querySelector(".product-comments > div > span");
+        if (commentSpan && !commentSpan.querySelector(".gs-grade-badge")) {
+            const badge = document.createElement("span");
+            badge.className = "gs-grade-badge";
+            badge.textContent = hit.gradeText;
+            badge.style.cssText = `
+                display: inline-block;
+                margin-left: 6px;
+                padding: 1px 6px;
+                border-radius: 3px;
+                background: ${hit.color};
+                color: #fff;
+                font-size: 11px;
+                font-weight: 700;
+                font-family: monospace;
+                vertical-align: middle;
+                letter-spacing: 0.3px;
+            `;
+            commentSpan.appendChild(badge);
+        }
+    });
+}
+
+/* -----------------------------
+      AUTO-SCAN ON PAGE LOAD
+------------------------------ */
+
+async function autoScan() {
+    // Only run on article listing pages
+    if (!document.querySelector(".article-row")) return;
+
+    await loadAllResults();
+
+    // Read saved company filter from storage
+    const stored = await new Promise(resolve =>
+        chrome.storage.local.get(
+            { enabledCompanies: GRADING_PATTERNS.map(p => p.name) },
+            res => resolve(res)
+        )
+    );
+
+    const gradedHits = scanGradedCards(stored.enabledCompanies);
+
+    // Cache results so popup can read them instantly
+    await chrome.storage.session.set({
+        lastScan: {
+            hits: gradedHits,
+            url: window.location.href,
+            ts: Date.now()
+        }
+    });
+
+    // Inject visual highlights into the page
+    injectPageHighlights(gradedHits);
+}
+
+// Wait for the DOM to settle before scanning
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", autoScan);
+} else {
+    autoScan();
+}
+
+/* -----------------------------
+     MESSAGE HANDLER (popup)
+------------------------------ */
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "SCAN_GRADED") {
         (async () => {
             try {
                 await loadAllResults();
                 const gradedHits = scanGradedCards(msg.enabledCompanies);
+
+                // Update cache
+                await chrome.storage.session.set({
+                    lastScan: {
+                        hits: gradedHits,
+                        url: window.location.href,
+                        ts: Date.now()
+                    }
+                });
+
+                injectPageHighlights(gradedHits);
                 sendResponse({ success: true, totalGraded: gradedHits.length, gradedHits });
             } catch (err) {
                 sendResponse({ error: err.message });
