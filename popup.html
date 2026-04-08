@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: sans-serif; padding: 12px; width: 420px; }
+        button { width: 100%; padding: 8px; margin-bottom: 12px; cursor: pointer; }
+        
+        .filter-section {
+            margin-bottom: 12px;
+            padding: 10px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .filter-section h4 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+        }
+        
+        .company-filters {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+        
+        .company-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+        }
+        
+        .company-checkbox input {
+            cursor: pointer;
+        }
+        
+        .company-checkbox label {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        
+        .filter-actions button {
+            flex: 1;
+            padding: 4px;
+            font-size: 12px;
+            margin: 0;
+        }
+        
+        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+        th { background: #f0f0f0; }
+        a { color: #0077cc; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .grade { font-weight: bold; }
+        .grader-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h3>Cardmarket Grading Scanner</h3>
+    
+    <div class="filter-section">
+        <h4>Filter by Grading Company:</h4>
+        <div class="company-filters">
+            <div class="company-checkbox">
+                <input type="checkbox" id="psa" value="PSA" checked>
+                <label for="psa">PSA</label>
+            </div>
+            <div class="company-checkbox">
+                <input type="checkbox" id="cgc" value="CGC" checked>
+                <label for="cgc">CGC</label>
+            </div>
+            <div class="company-checkbox">
+                <input type="checkbox" id="bgs" value="BGS" checked>
+                <label for="bgs">BGS</label>
+            </div>
+            <div class="company-checkbox">
+                <input type="checkbox" id="tag" value="TAG" checked>
+                <label for="tag">TAG</label>
+            </div>
+            <div class="company-checkbox">
+                <input type="checkbox" id="ace" value="ACE" checked>
+                <label for="ace">ACE</label>
+            </div>
+            <div class="company-checkbox">
+                <input type="checkbox" id="mnt" value="MNT" checked>
+                <label for="mnt">MNT</label>
+            </div>
+            <div class="company-checkbox">
+                <input type="checkbox" id="sgc" value="SGC" checked>
+                <label for="sgc">SGC</label>
+            </div>
+        </div>
+        <div class="filter-actions">
+            <button id="selectAll">Select All</button>
+            <button id="deselectAll">Deselect All</button>
+        </div>
+    </div>
+    
+    <button id="scan">Scan Page</button>
+    <button id="toggleFavs">Show Favorites</button>
+    <div id="output">Click "Scan Page" to start.</div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
