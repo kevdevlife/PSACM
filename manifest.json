@@ -1,25 +1,28 @@
 {
     "name": "Cardmarket Grading Scanner",
     "description": "Scan Cardmarket pages for graded card listings (PSA, CGC, BGS, TAG, ACE, MNT, SGC).",
-    "version": "2.1",
+    "version": "2.2",
     "manifest_version": 3,
     "permissions": [
         "activeTab",
         "scripting",
         "storage"
     ],
+    "background": {
+        "service_worker": "background.js"
+    },
     "action": {
-      "default_popup": "popup.html",
-      "default_title": "Scan for Graded Cards"
+        "default_popup": "popup.html",
+        "default_title": "Scan for Graded Cards"
     },
     "content_scripts": [
-      {
-        "matches": [
-          "https://www.cardmarket.com/*",
-          "https://www.cardmarket.com/*/*",
-          "https://www.cardmarket.com/*/*/*"
-        ],
-        "js": ["content.js"]
-      }
+        {
+            "matches": [
+                "https://www.cardmarket.com/*",
+                "https://www.cardmarket.com/*/*",
+                "https://www.cardmarket.com/*/*/*"
+            ],
+            "js": ["content.js"]
+        }
     ]
-  }
+}

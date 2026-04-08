@@ -267,8 +267,8 @@ async function renderTable(hits, isFavorites = false) {
 
 (async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const session = await chrome.storage.session.get("lastScan");
-    const cached = session.lastScan;
+    const res = await chrome.runtime.sendMessage({ action: "GET_SCAN" });
+    const cached = res?.lastScan;
 
     // Use cache if it's for the current page and under 5 minutes old
     if (cached && cached.url === tab.url && Date.now() - cached.ts < 5 * 60 * 1000) {

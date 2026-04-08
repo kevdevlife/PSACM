@@ -127,24 +127,28 @@ function scanGradedCards(enabledCompanies = null) {
 ------------------------------ */
 
 function injectPageHighlights(gradedHits) {
-    // Remove any previously injected badges (re-scan scenario)
+    // Clean up previous run
     document.querySelectorAll(".gs-grade-badge").forEach(el => el.remove());
     document.querySelectorAll(".article-row").forEach(row => {
         row.style.borderLeft = "";
+        row.style.paddingLeft = "";
+        delete row.dataset.gsGrader;
     });
 
     gradedHits.forEach(hit => {
-        // Find the row by its anchor
         const anchor = document.querySelector(`a[name="${hit.anchorName}"]`);
         if (!anchor) return;
         const row = anchor.closest(".article-row");
         if (!row) return;
 
+        // Tag row with grader so the filter can show/hide it
+        row.dataset.gsGrader = hit.grader;
+
         // Colored left border
         row.style.borderLeft = `3px solid ${hit.color}`;
         row.style.paddingLeft = "4px";
 
-        // Grade badge injected next to the seller comment
+        // Grade badge next to the seller comment
         const commentSpan = row.querySelector(".product-comments > div > span");
         if (commentSpan && !commentSpan.querySelector(".gs-grade-badge")) {
             const badge = document.createElement("span");
@@ -169,16 +173,168 @@ function injectPageHighlights(gradedHits) {
 }
 
 /* -----------------------------
+    FILTER FORM INJECTION
+------------------------------ */
+
+function applyGraderFilter(activeGraders) {
+    document.querySelectorAll(".article-row").forEach(row => {
+        const grader = row.dataset.gsGrader;
+
+        if (activeGraders.size === 0) {
+            // Nothing checked — show everything
+            row.style.display = "";
+            return;
+        }
+
+        if (!grader) {
+            // Ungraded row — hide when a grader filter is active
+            row.style.display = "none";
+            return;
+        }
+
+        row.style.display = activeGraders.has(grader) ? "" : "none";
+    });
+}
+
+function injectFilterForm(gradedHits) {
+    // Remove stale injection on re-scan
+    const existing = document.getElementById("gs-filter-section");
+    if (existing) existing.remove();
+
+    const filterForm = document.getElementById("FilterForm");
+    if (!filterForm) return;
+
+    // Count hits per grader
+    const graderCounts = {};
+    gradedHits.forEach(hit => {
+        graderCounts[hit.grader] = (graderCounts[hit.grader] || 0) + 1;
+    });
+
+    // Only include graders that actually appear in results
+    const presentGraders = GRADING_PATTERNS.filter(p => graderCounts[p.name]);
+    if (presentGraders.length === 0) return;
+
+    const section = document.createElement("div");
+    section.id = "gs-filter-section";
+    section.style.cssText = `
+        border-top: 1px solid #dee2e6;
+        padding: 12px 0 4px;
+        margin-top: 4px;
+    `;
+
+    // Section heading with total count — mirrors Cardmarket filter heading style
+    const heading = document.createElement("p");
+    heading.style.cssText = `
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+        margin: 0 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    `;
+    heading.innerHTML = `
+        Graded Cards
+        <span style="
+            background: #6c757d;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+            letter-spacing: 0.3px;
+        ">${gradedHits.length}</span>
+    `;
+    section.appendChild(heading);
+
+    const activeGraders = new Set();
+
+    presentGraders.forEach(grader => {
+        const count = graderCounts[grader.name];
+
+        const label = document.createElement("label");
+        label.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #333;
+            user-select: none;
+        `;
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.style.cssText = "cursor: pointer; width: 14px; height: 14px; margin: 0; flex-shrink: 0;";
+
+        // Color dot matching the grader badge color
+        const dot = document.createElement("span");
+        dot.style.cssText = `
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: ${grader.color};
+            flex-shrink: 0;
+        `;
+
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = grader.name;
+        nameSpan.style.flex = "1";
+
+        const countSpan = document.createElement("span");
+        countSpan.textContent = count;
+        countSpan.style.cssText = "color: #999; font-size: 12px;";
+
+        label.appendChild(checkbox);
+        label.appendChild(dot);
+        label.appendChild(nameSpan);
+        label.appendChild(countSpan);
+        section.appendChild(label);
+
+        checkbox.addEventListener("change", () => {
+            if (checkbox.checked) activeGraders.add(grader.name);
+            else activeGraders.delete(grader.name);
+            applyGraderFilter(activeGraders);
+        });
+    });
+
+    // "Show all" reset link
+    const reset = document.createElement("a");
+    reset.textContent = "Show all";
+    reset.href = "#";
+    reset.style.cssText = `
+        font-size: 12px;
+        color: #007bff;
+        display: block;
+        margin-top: 6px;
+        margin-bottom: 4px;
+        text-decoration: none;
+    `;
+    reset.addEventListener("mouseover", () => reset.style.textDecoration = "underline");
+    reset.addEventListener("mouseout",  () => reset.style.textDecoration = "none");
+    reset.addEventListener("click", e => {
+        e.preventDefault();
+        section.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+        activeGraders.clear();
+        applyGraderFilter(activeGraders);
+    });
+    section.appendChild(reset);
+
+    filterForm.appendChild(section);
+}
+
+/* -----------------------------
       AUTO-SCAN ON PAGE LOAD
 ------------------------------ */
 
 async function autoScan() {
-    // Only run on article listing pages
     if (!document.querySelector(".article-row")) return;
 
     await loadAllResults();
 
-    // Read saved company filter from storage
     const stored = await new Promise(resolve =>
         chrome.storage.local.get(
             { enabledCompanies: GRADING_PATTERNS.map(p => p.name) },
@@ -188,20 +344,17 @@ async function autoScan() {
 
     const gradedHits = scanGradedCards(stored.enabledCompanies);
 
-    // Cache results so popup can read them instantly
-    await chrome.storage.session.set({
-        lastScan: {
-            hits: gradedHits,
-            url: window.location.href,
-            ts: Date.now()
-        }
+    // Cache results via background service worker
+    // (chrome.storage.session is not available in content scripts)
+    chrome.runtime.sendMessage({
+        action: "CACHE_SCAN",
+        payload: { hits: gradedHits, url: window.location.href, ts: Date.now() }
     });
 
-    // Inject visual highlights into the page
     injectPageHighlights(gradedHits);
+    injectFilterForm(gradedHits);
 }
 
-// Wait for the DOM to settle before scanning
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", autoScan);
 } else {
@@ -219,16 +372,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 await loadAllResults();
                 const gradedHits = scanGradedCards(msg.enabledCompanies);
 
-                // Update cache
-                await chrome.storage.session.set({
-                    lastScan: {
-                        hits: gradedHits,
-                        url: window.location.href,
-                        ts: Date.now()
-                    }
+                chrome.runtime.sendMessage({
+                    action: "CACHE_SCAN",
+                    payload: { hits: gradedHits, url: window.location.href, ts: Date.now() }
                 });
 
                 injectPageHighlights(gradedHits);
+                injectFilterForm(gradedHits);
                 sendResponse({ success: true, totalGraded: gradedHits.length, gradedHits });
             } catch (err) {
                 sendResponse({ error: err.message });
