@@ -16,22 +16,31 @@ const GRADING_PATTERNS = [
     { name: "SGC", pattern: /sgc\s*(?:10|[1-9])/i, color: "#e74c3c" }
 ];
 
+// Words that, when they appear right before a grade match ("not a PSA 10",
+// "far from CGC 9"), mean the seller is denying the grade rather than
+// claiming it — those must not be flagged as graded listings.
+const NEGATION_CUES = /\b(not|no|non|isn'?t|wasn'?t|aren'?t|ain'?t|never|won'?t|wouldn'?t|doesn'?t|didn'?t|far from|nowhere near|hardly|barely)\b/i;
+
+function isNegatedMatch(text, matchIndex) {
+    const windowStart = Math.max(0, matchIndex - 40);
+    const before = text.slice(windowStart, matchIndex);
+    const boundary = Math.max(
+        before.lastIndexOf("."), before.lastIndexOf("!"), before.lastIndexOf("?"),
+        before.lastIndexOf(","), before.lastIndexOf(";")
+    );
+    return NEGATION_CUES.test(before.slice(boundary + 1));
+}
+
 /* -----------------------------
    SCROLL + HIGHLIGHT HANDLER
 ------------------------------ */
 
 async function scrollToSellerFromHash() {
-    const sellerAnchor = window.location.hash.slice(1);
-    if (!sellerAnchor) return;
+    const rowId = window.location.hash.slice(1);
+    if (!rowId) return;
 
-    const links = document.querySelectorAll(".seller-name a");
-    const match = Array.from(links).find(
-        link => link.textContent.trim().toLowerCase() === sellerAnchor.toLowerCase()
-    );
-    if (!match) return;
-
-    const row = match.closest(".article-row");
-    if (!row) return;
+    const row = document.getElementById(rowId);
+    if (!row || !row.classList.contains("article-row")) return;
 
     row.scrollIntoView({ behavior: "smooth", block: "center" });
     row.style.transition = "all 0.6s ease";
@@ -46,6 +55,8 @@ async function scrollToSellerFromHash() {
 
 scrollToSellerFromHash();
 window.addEventListener("hashchange", scrollToSellerFromHash);
+
+
 
 /* -----------------------------
         LOAD ALL RESULTS
@@ -79,40 +90,35 @@ function scanGradedCards(enabledCompanies = null) {
         ? GRADING_PATTERNS.filter(p => enabledCompanies.includes(p.name))
         : GRADING_PATTERNS;
 
-    rows.forEach((row, index) => {
+    rows.forEach((row) => {
         const commentSpan = row.querySelector(".product-comments > div > span");
         if (!commentSpan) return;
+        if (!row.id) return; // no stable reference point to link back to
 
         const text = commentSpan.innerText.toLowerCase();
 
         for (const grader of companiesToScan) {
             const match = text.match(grader.pattern);
             if (!match) continue;
+            if (isNegatedMatch(text, match.index)) continue;
 
             const priceElement = row.querySelector(".price-container .text-end");
             const price = priceElement ? priceElement.textContent.trim() : "N/A";
 
-            const sellerLink = row.querySelector(".seller-name a");
-            const sellerText = sellerLink
-                ? sellerLink.textContent.trim().toLowerCase()
-                : `row${index}`;
-
-            let a = row.querySelector(`a[name="${sellerText}"]`);
-            if (!a) {
-                a = document.createElement("a");
-                a.name = sellerText;
-                a.href = `#${sellerText}`;
-                row.prepend(a);
-            }
+            // Cardmarket gives every listing row its own unique id, so this
+            // anchor points at this exact listing even when the same seller
+            // has multiple listings for the card.
+            const url = new URL(window.location.href);
+            url.hash = row.id;
 
             results.push({
-                anchorName: sellerText,
+                anchorName: row.id,
                 cardName,
                 price,
                 grader: grader.name,
                 gradeText: match[0].toUpperCase().replace(/\s+/g, " "),
                 color: grader.color,
-                url: a.href
+                url: url.toString()
             });
 
             break;
@@ -136,9 +142,7 @@ function injectPageHighlights(gradedHits) {
     });
 
     gradedHits.forEach(hit => {
-        const anchor = document.querySelector(`a[name="${hit.anchorName}"]`);
-        if (!anchor) return;
-        const row = anchor.closest(".article-row");
+        const row = document.getElementById(hit.anchorName);
         if (!row) return;
 
         // Tag row with grader so the filter can show/hide it
@@ -198,11 +202,11 @@ function applyGraderFilter(activeGraders) {
 
 function injectFilterForm(gradedHits) {
     // Remove stale injection on re-scan
-    const existing = document.getElementById("gs-filter-section");
+    const existing = document.getElementById("gs-filter-accordion-item");
     if (existing) existing.remove();
 
-    const filterForm = document.getElementById("FilterForm");
-    if (!filterForm) return;
+    const articleFilters = document.getElementById("articleFilters");
+    if (!articleFilters) return;
 
     // Count hits per grader
     const graderCounts = {};
@@ -214,62 +218,66 @@ function injectFilterForm(gradedHits) {
     const presentGraders = GRADING_PATTERNS.filter(p => graderCounts[p.name]);
     if (presentGraders.length === 0) return;
 
-    const section = document.createElement("div");
-    section.id = "gs-filter-section";
-    section.style.cssText = `
-        border-top: 1px solid #dee2e6;
-        padding: 12px 0 4px;
-        margin-top: 4px;
-    `;
-
-    // Section heading with total count — mirrors Cardmarket filter heading style
-    const heading = document.createElement("p");
-    heading.style.cssText = `
-        font-size: 13px;
-        font-weight: 600;
-        color: #333;
-        margin: 0 0 8px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    `;
-    heading.innerHTML = `
-        Graded Cards
-        <span style="
-            background: #6c757d;
-            color: #fff;
-            font-size: 10px;
-            font-weight: 700;
-            padding: 1px 5px;
-            border-radius: 3px;
-            font-family: monospace;
-            letter-spacing: 0.3px;
-        ">${gradedHits.length}</span>
-    `;
-    section.appendChild(heading);
-
     const activeGraders = new Set();
+    const accordionId = "articleFilterGradedCards";
+
+    // Build accordion item matching Cardmarket's Bootstrap accordion structure
+    const accordionItem = document.createElement("div");
+    accordionItem.id = "gs-filter-accordion-item";
+    accordionItem.className = "accordion-item";
+
+    // Header
+    const header = document.createElement("div");
+    header.className = "accordion-header";
+
+    const headerLink = document.createElement("a");
+    headerLink.href = `#${accordionId}`;
+    headerLink.setAttribute("data-bs-parent", "#articleFilters");
+    headerLink.setAttribute("data-bs-toggle", "collapse");
+    headerLink.setAttribute("aria-controls", accordionId);
+    headerLink.setAttribute("aria-expanded", "true");
+
+    const h3 = document.createElement("h3");
+    h3.className = "h-100 text-nowrap";
+    h3.innerHTML = `
+<span data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="right" class="fonticon-star-empty" aria-label="Graded Cards" data-bs-original-title="Graded Cards"></span>
+        <span class="filterName text-nowrap me-1">Graded Cards</span>
+    `;
+
+    headerLink.appendChild(h3);
+    header.appendChild(headerLink);
+    accordionItem.appendChild(header);
+
+    // Collapse body
+    const collapseDiv = document.createElement("div");
+    collapseDiv.id = accordionId;
+    collapseDiv.className = "accordion-collapse collapse show";
+
+    const itemBody = document.createElement("div");
+    itemBody.className = "item-body-wrapper";
+
+    const filterBox = document.createElement("div");
+    filterBox.className = "sellerTypeCheckboxes";
 
     presentGraders.forEach(grader => {
         const count = graderCounts[grader.name];
+        const cbId = `gs-grader-cb-${grader.name.toLowerCase()}`;
 
-        const label = document.createElement("label");
-        label.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            color: #333;
-            user-select: none;
-        `;
+        const formCheck = document.createElement("div");
+        formCheck.className = "form-check";
 
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
-        checkbox.style.cssText = "cursor: pointer; width: 14px; height: 14px; margin: 0; flex-shrink: 0;";
+        checkbox.id = cbId;
+        checkbox.className = "form-check-input mb-1 me-2";
+        checkbox.style.cursor = "pointer";
 
-        // Color dot matching the grader badge color
+        const label = document.createElement("label");
+        label.htmlFor = cbId;
+        label.className = "d-inline-flex form-check-label";
+        label.style.cssText = "cursor: pointer; align-items: center; gap: 6px; user-select: none;";
+
+        // Colored dot
         const dot = document.createElement("span");
         dot.style.cssText = `
             display: inline-block;
@@ -278,6 +286,7 @@ function injectFilterForm(gradedHits) {
             border-radius: 50%;
             background: ${grader.color};
             flex-shrink: 0;
+            margin-right: 2px;
         `;
 
         const nameSpan = document.createElement("span");
@@ -286,13 +295,14 @@ function injectFilterForm(gradedHits) {
 
         const countSpan = document.createElement("span");
         countSpan.textContent = count;
-        countSpan.style.cssText = "color: #999; font-size: 12px;";
+        countSpan.style.cssText = "color: #999; font-size: 12px; margin-left: 4px;";
 
-        label.appendChild(checkbox);
         label.appendChild(dot);
         label.appendChild(nameSpan);
         label.appendChild(countSpan);
-        section.appendChild(label);
+        formCheck.appendChild(checkbox);
+        formCheck.appendChild(label);
+        filterBox.appendChild(formCheck);
 
         checkbox.addEventListener("change", () => {
             if (checkbox.checked) activeGraders.add(grader.name);
@@ -301,29 +311,49 @@ function injectFilterForm(gradedHits) {
         });
     });
 
-    // "Show all" reset link
-    const reset = document.createElement("a");
-    reset.textContent = "Show all";
-    reset.href = "#";
-    reset.style.cssText = `
-        font-size: 12px;
-        color: #007bff;
-        display: block;
-        margin-top: 6px;
-        margin-bottom: 4px;
-        text-decoration: none;
-    `;
-    reset.addEventListener("mouseover", () => reset.style.textDecoration = "underline");
-    reset.addEventListener("mouseout",  () => reset.style.textDecoration = "none");
-    reset.addEventListener("click", e => {
-        e.preventDefault();
-        section.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+    // Select all / Deselect all footer — matches Cardmarket's button row style
+    const btnRow = document.createElement("div");
+    btnRow.className = "d-flex has-content-centered";
+    btnRow.style.marginTop = "4px";
+
+    const selectAllBtn = document.createElement("button");
+    selectAllBtn.type = "button";
+    selectAllBtn.className = "btn select-all btn-link btn-sm btn-slim";
+    selectAllBtn.textContent = "Select all";
+
+    const sep = document.createElement("div");
+    sep.textContent = "/";
+
+    const deselectAllBtn = document.createElement("button");
+    deselectAllBtn.type = "button";
+    deselectAllBtn.className = "btn deselect-all btn-link btn-sm btn-slim";
+    deselectAllBtn.textContent = "Deselect all";
+
+    selectAllBtn.addEventListener("click", () => {
+        filterBox.querySelectorAll("input[type=checkbox]").forEach(cb => {
+            cb.checked = true;
+            activeGraders.add(cb.id.replace("gs-grader-cb-", "").toUpperCase());
+        });
+        applyGraderFilter(activeGraders);
+    });
+
+    deselectAllBtn.addEventListener("click", () => {
+        filterBox.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
         activeGraders.clear();
         applyGraderFilter(activeGraders);
     });
-    section.appendChild(reset);
 
-    filterForm.appendChild(section);
+    btnRow.appendChild(selectAllBtn);
+    btnRow.appendChild(sep);
+    btnRow.appendChild(deselectAllBtn);
+
+    itemBody.appendChild(filterBox);
+    itemBody.appendChild(btnRow);
+    collapseDiv.appendChild(itemBody);
+    accordionItem.appendChild(collapseDiv);
+
+    // Insert as the first item in the accordion so it's prominent
+    articleFilters.insertBefore(accordionItem, articleFilters.firstChild);
 }
 
 /* -----------------------------
