@@ -194,6 +194,95 @@
             border-color: var(--text-muted);
         }
 
+        /* ---- REMEMBER ME SECTION ---- */
+        .header-buttons {
+            display: flex;
+            gap: 6px;
+        }
+
+        .filter-toggle-btn .auth-alert {
+            background: var(--accent-secondary);
+            color: var(--bg-primary);
+            font-size: 9px;
+            font-weight: 700;
+            border-radius: 10px;
+            padding: 1px 5px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .auth-section.open {
+            max-height: 260px;
+        }
+
+        .auth-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .auth-toggle input {
+            accent-color: var(--accent-primary);
+            cursor: pointer;
+        }
+
+        .auth-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .auth-fields input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 11px;
+            font-family: 'DM Sans', sans-serif;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .auth-fields input:focus {
+            border-color: var(--accent-primary);
+        }
+
+        .auth-fields input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .auth-failure {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 10px;
+            padding: 6px 8px;
+            border: 1px solid var(--accent-secondary);
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--accent-secondary);
+        }
+
+        .auth-failure[hidden] { display: none; }
+
+        .auth-failure button { flex: 0 0 auto; }
+
+        .auth-status {
+            margin-top: 8px;
+            min-height: 13px;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
         /* ---- ACTION BUTTONS ---- */
         .action-buttons {
             padding: 10px 16px;
@@ -538,9 +627,35 @@
             <h3>Grading Scanner</h3>
             <div class="header-subtitle">Find graded cards on Cardmarket</div>
         </div>
-        <button class="filter-toggle-btn" id="filterToggleBtn">
-            Filters <span class="filter-count" id="filterCount">7</span>
-        </button>
+        <div class="header-buttons">
+            <button class="filter-toggle-btn" id="authToggleBtn">
+                Remember me <span class="auth-alert" id="authAlert" hidden>!</span>
+            </button>
+            <button class="filter-toggle-btn" id="filterToggleBtn">
+                Filters <span class="filter-count" id="filterCount">7</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- COLLAPSIBLE REMEMBER ME SECTION -->
+    <div class="filter-section auth-section" id="authSection">
+        <label class="auth-toggle">
+            <input type="checkbox" id="authEnabled">
+            Keep me signed in on Cardmarket
+        </label>
+        <div class="auth-fields">
+            <input type="text" id="authUsername" placeholder="Username" autocomplete="off" spellcheck="false">
+            <input type="password" id="authPassword" placeholder="Password" autocomplete="off">
+        </div>
+        <div class="filter-actions">
+            <button id="authSave">Save</button>
+            <button id="authForget">Forget details</button>
+        </div>
+        <div class="auth-failure" id="authFailure" hidden>
+            <span id="authFailureText"></span>
+            <div class="filter-actions"><button id="authRetry">Retry</button></div>
+        </div>
+        <div class="auth-status" id="authStatus"></div>
     </div>
 
     <!-- COLLAPSIBLE FILTER SECTION -->

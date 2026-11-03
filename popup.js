@@ -333,3 +333,125 @@ document.getElementById("scan").addEventListener("click", async () => {
         }
     );
 });
+/* -----------------------------
+          REMEMBER ME
+   Credentials live only in
+   chrome.storage.local.rememberMe;
+   they are never logged or sent
+   anywhere from the popup.
+------------------------------ */
+
+{
+    const authSection = document.getElementById("authSection");
+    const authToggleBtn = document.getElementById("authToggleBtn");
+    const authAlert = document.getElementById("authAlert");
+    const authEnabled = document.getElementById("authEnabled");
+    const authUsername = document.getElementById("authUsername");
+    const authPassword = document.getElementById("authPassword");
+    const authFailure = document.getElementById("authFailure");
+    const authFailureText = document.getElementById("authFailureText");
+    const authStatus = document.getElementById("authStatus");
+
+    const FAILURE_TEXT = {
+        "wrong-credentials": "Sign-in stopped: username or password not accepted.",
+        "captcha": "Sign-in stopped: Cardmarket asked for a captcha.",
+        "verification": "Sign-in stopped: Cardmarket asked for extra verification.",
+        "unknown": "Sign-in stopped: the login could not be completed."
+    };
+
+    let record = null;
+
+    function setStatus(text) {
+        authStatus.textContent = text;
+    }
+
+    function render() {
+        authEnabled.checked = !!(record && record.enabled);
+        if (document.activeElement !== authUsername) {
+            authUsername.value = (record && record.username) || "";
+        }
+        authPassword.placeholder = record && record.password
+            ? "Password saved (leave blank to keep)"
+            : "Password";
+        const failed = record && record.failed;
+        authFailure.hidden = !failed;
+        authAlert.hidden = !failed;
+        authFailureText.textContent = failed ? (FAILURE_TEXT[failed] || FAILURE_TEXT.unknown) : "";
+    }
+
+    function load() {
+        chrome.storage.local.get("rememberMe", res => {
+            record = res.rememberMe || null;
+            render();
+        });
+    }
+
+    authToggleBtn.addEventListener("click", () => {
+        const isOpen = authSection.classList.toggle("open");
+        authToggleBtn.classList.toggle("active", isOpen);
+        if (isOpen) {
+            filterSection.classList.remove("open");
+            filterToggleBtn.classList.remove("active");
+        }
+    });
+
+    filterToggleBtn.addEventListener("click", () => {
+        if (filterSection.classList.contains("open")) {
+            authSection.classList.remove("open");
+            authToggleBtn.classList.remove("active");
+        }
+    });
+
+    // The toggle applies immediately; it does not touch credentials or failure state.
+    authEnabled.addEventListener("change", () => {
+        const next = Object.assign(
+            { username: "", password: "", paused: false, failed: null },
+            record || {},
+            { enabled: authEnabled.checked }
+        );
+        chrome.storage.local.set({ rememberMe: next }, () => {
+            setStatus(authEnabled.checked ? "Remember me is on." : "Remember me is off.");
+        });
+    });
+
+    document.getElementById("authSave").addEventListener("click", () => {
+        const username = authUsername.value.trim();
+        const password = authPassword.value || (record && record.password) || "";
+        if (!username || !password) {
+            setStatus("Enter a username and password first.");
+            return;
+        }
+        const next = { enabled: authEnabled.checked, username, password, paused: false, failed: null };
+        chrome.storage.local.set({ rememberMe: next }, () => {
+            authPassword.value = "";
+            setStatus("Details saved.");
+        });
+    });
+
+    document.getElementById("authForget").addEventListener("click", () => {
+        chrome.storage.local.remove("rememberMe", () => {
+            authPassword.value = "";
+            authUsername.value = "";
+            setStatus("Details forgotten.");
+        });
+    });
+
+    document.getElementById("authRetry").addEventListener("click", () => {
+        chrome.runtime.sendMessage({ action: "AUTH_RETRY" }, res => {
+            if (chrome.runtime.lastError || !res || !res.ok) {
+                setStatus("Retry failed.");
+                return;
+            }
+            setStatus("Sign-in will be tried again on the next Cardmarket page load.");
+        });
+    });
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === "local" && changes.rememberMe) {
+            record = changes.rememberMe.newValue || null;
+            render();
+        }
+    });
+
+    load();
+}

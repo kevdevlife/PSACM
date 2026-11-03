@@ -6,7 +6,12 @@
     "permissions": [
         "activeTab",
         "scripting",
-        "storage"
+        "storage",
+        "cookies",
+        "alarms"
+    ],
+    "host_permissions": [
+        "https://www.cardmarket.com/*"
     ],
     "background": {
         "service_worker": "background.js"
@@ -22,7 +27,24 @@
                 "https://www.cardmarket.com/*/*",
                 "https://www.cardmarket.com/*/*/*"
             ],
-            "js": ["lib/grading.js", "lib/prices.js", "lib/favorites.js", "content.js"]
+            "js": [
+                "lib/grading.js",
+                "lib/prices.js",
+                "lib/favorites.js",
+                "content.js"
+            ]
+        },
+        {
+            "matches": [
+                "https://www.cardmarket.com/*",
+                "https://www.cardmarket.com/*/*",
+                "https://www.cardmarket.com/*/*/*"
+            ],
+            "js": [
+                "lib/auth-state.js",
+                "auth.js"
+            ],
+            "run_at": "document_idle"
         }
     ]
 }
