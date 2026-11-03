@@ -50,51 +50,93 @@ async function loadAllResults() {
        GRADING SCAN HANDLER
 ------------------------------ */
 
-function scanGradedCards(enabledCompanies = null) {
-    const results = [];
-    const rows = document.querySelectorAll(".article-row");
+let currentListings = [];
+
+function isProductPage() {
+    const path = window.location.pathname;
+    return path.includes("/Products/") &&
+        !path.includes("/Products/Search") &&
+        !!document.querySelector(".page-title-container h1") &&
+        !!document.querySelector(".article-row");
+}
+
+function readListing(row) {
+    if (!row || !row.id) return null;
+
     const cardName =
-        document.querySelector(".page-title-container > div > h1")?.innerText?.trim() ||
+        document.querySelector(".page-title-container h1")?.textContent?.trim() ||
         "Unknown";
+    const seller = row.querySelector(".seller-name a")?.textContent?.trim() || "";
+    const conditionCode =
+        row.querySelector(".article-condition .badge")?.textContent?.trim() || "";
 
-    rows.forEach((row) => {
-        const commentSpan = row.querySelector(".product-comments > div > span");
-        if (!commentSpan) return;
-        if (!row.id) return; // no stable reference point to link back to
+    let language = "";
+    const attrs = row.querySelector(".product-attributes");
+    if (attrs) {
+        const icon =
+            attrs.querySelector("span.icon[data-bs-original-title], span.icon[aria-label]") ||
+            Array.from(attrs.querySelectorAll("[data-bs-original-title], [aria-label]"))
+                .find(el => !el.closest(".article-condition"));
+        language = icon?.getAttribute("data-bs-original-title") ||
+            icon?.getAttribute("aria-label") || "";
+    }
 
-        const text = commentSpan.innerText.toLowerCase();
+    const priceText =
+        row.querySelector(".price-container .text-end")?.textContent?.trim() || "";
+    const hasPhoto = !!row.querySelector(".fonticon-camera");
 
-        const grade = detectGrade(text, enabledCompanies);
-        if (!grade) return;
+    const commentText =
+        row.querySelector(".product-comments > div > span")?.textContent?.toLowerCase();
+    const grade = commentText ? detectGrade(commentText) : null;
 
-        const priceElement = row.querySelector(".price-container .text-end");
-        const price = priceElement ? priceElement.textContent.trim() : "N/A";
+    const url = new URL(window.location.href);
+    url.hash = row.id;
 
-        // Cardmarket gives every listing row its own unique id, so this
-        // anchor points at this exact listing even when the same seller
-        // has multiple listings for the card.
-        const url = new URL(window.location.href);
-        url.hash = row.id;
+    return {
+        id: row.id,
+        url: url.toString(),
+        cardName,
+        seller,
+        conditionCode,
+        language,
+        priceText,
+        price: parsePrice(priceText),
+        hasPhoto,
+        grade,
+        row
+    };
+}
 
-        results.push({
-            anchorName: row.id,
-            cardName,
-            price,
-            grader: grade.grader,
-            gradeText: grade.gradeText,
-            color: grade.color,
-            url: url.toString()
-        });
-    });
+function scanListings() {
+    currentListings = Array.from(document.querySelectorAll(".article-row"))
+        .map(readListing)
+        .filter(Boolean);
+    return currentListings;
+}
 
-    return results;
+function gradedHits(listings, enabledCompanies = null) {
+    return listings
+        .filter(l => l.grade && (!enabledCompanies || enabledCompanies.includes(l.grade.grader)))
+        .map(l => ({
+            id: l.id,
+            anchorName: l.id, // interim: popup still reads anchorName/price until Task 5
+            url: l.url,
+            cardName: l.cardName,
+            seller: l.seller,
+            priceText: l.priceText,
+            price: l.priceText || "N/A",
+            language: l.language,
+            grader: l.grade.grader,
+            gradeText: l.grade.gradeText,
+            color: l.grade.color
+        }));
 }
 
 /* -----------------------------
       PAGE INJECTION / BADGES
 ------------------------------ */
 
-function injectPageHighlights(gradedHits) {
+function injectPageHighlights(hits) {
     // Clean up previous run
     document.querySelectorAll(".gs-grade-badge").forEach(el => el.remove());
     document.querySelectorAll(".article-row").forEach(row => {
@@ -103,8 +145,8 @@ function injectPageHighlights(gradedHits) {
         delete row.dataset.gsGrader;
     });
 
-    gradedHits.forEach(hit => {
-        const row = document.getElementById(hit.anchorName);
+    hits.forEach(hit => {
+        const row = document.getElementById(hit.id);
         if (!row) return;
 
         // Tag row with grader so the filter can show/hide it
@@ -114,9 +156,9 @@ function injectPageHighlights(gradedHits) {
         row.style.borderLeft = `3px solid ${hit.color}`;
         row.style.paddingLeft = "4px";
 
-        // Grade badge next to the seller comment
-        const commentSpan = row.querySelector(".product-comments > div > span");
-        if (commentSpan && !commentSpan.querySelector(".gs-grade-badge")) {
+        // Grade badge at the end of the attributes (always visible)
+        const attrs = row.querySelector(".product-attributes");
+        if (attrs && !attrs.querySelector(".gs-grade-badge")) {
             const badge = document.createElement("span");
             badge.className = "gs-grade-badge";
             badge.textContent = hit.gradeText;
@@ -133,7 +175,7 @@ function injectPageHighlights(gradedHits) {
                 vertical-align: middle;
                 letter-spacing: 0.3px;
             `;
-            commentSpan.appendChild(badge);
+            attrs.appendChild(badge);
         }
     });
 }
@@ -323,7 +365,7 @@ function injectFilterForm(gradedHits) {
 ------------------------------ */
 
 async function autoScan() {
-    if (!document.querySelector(".article-row")) return;
+    if (!isProductPage()) return;
 
     await loadAllResults();
 
@@ -334,17 +376,17 @@ async function autoScan() {
         )
     );
 
-    const gradedHits = scanGradedCards(stored.enabledCompanies);
+    const hits = gradedHits(scanListings(), stored.enabledCompanies);
 
     // Cache results via background service worker
     // (chrome.storage.session is not available in content scripts)
     chrome.runtime.sendMessage({
         action: "CACHE_SCAN",
-        payload: { hits: gradedHits, url: window.location.href, ts: Date.now() }
+        payload: { hits, url: window.location.href, ts: Date.now() }
     });
 
-    injectPageHighlights(gradedHits);
-    injectFilterForm(gradedHits);
+    injectPageHighlights(hits);
+    injectFilterForm(hits);
 }
 
 if (document.readyState === "loading") {
@@ -361,17 +403,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "SCAN_GRADED") {
         (async () => {
             try {
+                if (!isProductPage()) {
+                    sendResponse({ success: true, totalGraded: 0, gradedHits: [] });
+                    return;
+                }
                 await loadAllResults();
-                const gradedHits = scanGradedCards(msg.enabledCompanies);
+                const hits = gradedHits(scanListings(), msg.enabledCompanies);
 
                 chrome.runtime.sendMessage({
                     action: "CACHE_SCAN",
-                    payload: { hits: gradedHits, url: window.location.href, ts: Date.now() }
+                    payload: { hits, url: window.location.href, ts: Date.now() }
                 });
 
-                injectPageHighlights(gradedHits);
-                injectFilterForm(gradedHits);
-                sendResponse({ success: true, totalGraded: gradedHits.length, gradedHits });
+                injectPageHighlights(hits);
+                injectFilterForm(hits);
+                sendResponse({ success: true, totalGraded: hits.length, gradedHits: hits });
             } catch (err) {
                 sendResponse({ error: err.message });
             }
