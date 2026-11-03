@@ -107,6 +107,22 @@ function gradedHits(listings, enabledCompanies = null) {
       PAGE INJECTION / BADGES
 ------------------------------ */
 
+function styleGradeBadge(el, color) {
+    el.style.cssText = `
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        background: ${color};
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        font-family: monospace;
+        vertical-align: middle;
+        letter-spacing: 0.3px;
+    `;
+}
+
 function injectPageHighlights(hits) {
     // Clean up previous run
     document.querySelectorAll(".gs-grade-badge").forEach(el => el.remove());
@@ -133,19 +149,7 @@ function injectPageHighlights(hits) {
             const badge = document.createElement("span");
             badge.className = "gs-grade-badge";
             badge.textContent = hit.condition.gradeText;
-            badge.style.cssText = `
-                display: inline-block;
-                margin-left: 6px;
-                padding: 1px 6px;
-                border-radius: 3px;
-                background: ${hit.condition.color};
-                color: #fff;
-                font-size: 11px;
-                font-weight: 700;
-                font-family: monospace;
-                vertical-align: middle;
-                letter-spacing: 0.3px;
-            `;
+            styleGradeBadge(badge, hit.condition.color);
             attrs.appendChild(badge);
         }
     });
@@ -525,6 +529,70 @@ function showNotice(text) {
     else title.after(notice);
 }
 
+function renderOverview() {
+    document.getElementById("gs-overview")?.remove();
+    if (!isProductPage()) return;
+    const { raw, graded } = buildOverview(currentListings);
+    if (!raw.length && !graded.length) return;
+
+    const header = document.querySelector(".table-header");
+    const section = header ? header.parentElement : document.querySelector(".table-body")?.parentElement;
+    if (!section || !section.parentElement) return;
+
+    const line = () => {
+        const d = document.createElement("div");
+        d.style.cssText = "display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0; font-size: 13px;";
+        return d;
+    };
+    const item = (badge, priceText) => {
+        const s = document.createElement("span");
+        s.appendChild(badge);
+        s.appendChild(document.createTextNode(" from " + priceText));
+        return s;
+    };
+
+    const box = document.createElement("div");
+    box.id = "gs-overview";
+    box.style.cssText = "margin: 8px 0;";
+
+    if (raw.length) {
+        const l = line();
+        for (const r of raw) {
+            const outer = document.createElement("span");
+            outer.className = "article-condition condition-" + r.code.toLowerCase();
+            const b = document.createElement("span");
+            b.className = "badge";
+            b.textContent = r.code;
+            outer.appendChild(b);
+            l.appendChild(item(outer, r.priceText));
+        }
+        box.appendChild(l);
+    }
+    if (graded.length) {
+        const l = line();
+        for (const g of graded) {
+            const b = document.createElement("span");
+            b.className = "gs-overview-grade";
+            b.textContent = g.gradeText;
+            styleGradeBadge(b, g.color);
+            b.style.marginLeft = "0";
+            l.appendChild(item(b, g.priceText));
+        }
+        box.appendChild(l);
+    }
+
+    // Directly above the listings table section, same level as .table-body's container
+    section.parentElement.insertBefore(box, section);
+}
+
+function safeRenderOverview() {
+    try {
+        renderOverview();
+    } catch (err) {
+        console.error("[Grading Scanner] overview failed:", err);
+    }
+}
+
 function jumpToHash() {
     if (!isProductUrl()) return;
     const hash = window.location.hash.slice(1);
@@ -592,6 +660,7 @@ async function autoScan() {
     injectFilterForm(hits);
     await injectPhotoFilter();
     applyVisibility();
+    safeRenderOverview();
 
     listingsReady = true;
     jumpToHash();
@@ -628,6 +697,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 injectFilterForm(hits);
                 await injectPhotoFilter();
                 applyVisibility();
+                safeRenderOverview();
                 sendResponse({ success: true, totalGraded: hits.length, gradedHits: hits });
             } catch (err) {
                 sendResponse({ error: err.message });
