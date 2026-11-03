@@ -211,7 +211,7 @@
         }
 
         .auth-section.open {
-            max-height: 260px;
+            max-height: 300px;
         }
 
         .auth-toggle {
@@ -650,6 +650,10 @@
         <div class="filter-actions">
             <button id="authSave">Save</button>
             <button id="authForget">Forget details</button>
+        </div>
+        <div class="auth-failure" id="authPaused" hidden>
+            <span>Paused after you logged out</span>
+            <div class="filter-actions"><button id="authResume">Resume</button></div>
         </div>
         <div class="auth-failure" id="authFailure" hidden>
             <span id="authFailureText"></span>

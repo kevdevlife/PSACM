@@ -169,7 +169,7 @@ async function renderTable(hits, isFavorites = false) {
         clearStickyHeader();
         out.className = "output-container no-table";
         out.innerHTML = showOnlyFavs
-            ? `<div class="empty-state"><div class="empty-state-icon">⭐</div><div class="empty-state-text">No favorite graded cards yet</div></div>`
+            ? `<div class="empty-state"><div class="empty-state-icon">⭐</div><div class="empty-state-text">No favourites yet</div></div>`
             : `<div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-text">No graded cards found</div></div>`;
         return;
     }
@@ -351,6 +351,7 @@ document.getElementById("scan").addEventListener("click", async () => {
     const authFailure = document.getElementById("authFailure");
     const authFailureText = document.getElementById("authFailureText");
     const authStatus = document.getElementById("authStatus");
+    const authPaused = document.getElementById("authPaused");
 
     const FAILURE_TEXT = {
         "wrong-credentials": "Sign-in stopped: username or password not accepted.",
@@ -374,8 +375,10 @@ document.getElementById("scan").addEventListener("click", async () => {
             ? "Password saved (leave blank to keep)"
             : "Password";
         const failed = record && record.failed;
+        const paused = !!(record && record.paused);
         authFailure.hidden = !failed;
-        authAlert.hidden = !failed;
+        authPaused.hidden = !paused;
+        authAlert.hidden = !failed && !paused;
         authFailureText.textContent = failed ? (FAILURE_TEXT[failed] || FAILURE_TEXT.unknown) : "";
     }
 
@@ -436,15 +439,20 @@ document.getElementById("scan").addEventListener("click", async () => {
         });
     });
 
-    document.getElementById("authRetry").addEventListener("click", () => {
+    // Retry (after a failure) and Resume (after a manual logout) both clear
+    // failed/paused via the background's AUTH_RETRY.
+    function sendRetry(failText) {
         chrome.runtime.sendMessage({ action: "AUTH_RETRY" }, res => {
             if (chrome.runtime.lastError || !res || !res.ok) {
-                setStatus("Retry failed.");
+                setStatus(failText);
                 return;
             }
             setStatus("Sign-in will be tried again on the next Cardmarket page load.");
         });
-    });
+    }
+
+    document.getElementById("authRetry").addEventListener("click", () => sendRetry("Retry failed."));
+    document.getElementById("authResume").addEventListener("click", () => sendRetry("Resume failed."));
 
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area === "local" && changes.rememberMe) {
