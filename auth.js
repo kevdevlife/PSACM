@@ -13,6 +13,8 @@
      first text/email input; password via the form's password input.
    - The form is only submitted if its resolved action URL is
      https://www.cardmarket.com/...; anything else -> failed "unknown".
+     No login form (or no username/password field) on a page -> no attempt,
+     nothing recorded; the next page that has the form is used.
    - Failure classification after an attempt (still logged out):
      captcha (recaptcha|hcaptcha|turnstile|captcha element), verification
      (a visible input whose name/id matches code|otp|2fa|token, not __cmtkn),
@@ -110,7 +112,7 @@
     function fail(reason) {
         ss("del", ATTEMPTED_KEY);
         ss("del", RETURN_KEY);
-        updateRecord({ failed: reason });
+        updateRecord({ failed: reason, pendingAttemptAt: null });
         showFailure(reason);
     }
 
@@ -158,7 +160,8 @@
 
     function attemptLogin() {
         const form = findLoginForm();
-        if (!form) { fail("unknown"); return; }
+        // No login form on this page (no attempt made): try again on a page that has one.
+        if (!form) { console.debug("Grading Scanner: no login form on this page; sign-in skipped."); return; }
 
         let action;
         try {
@@ -172,8 +175,11 @@
         const user = form.querySelector('input[name="username"]') ||
             form.querySelector('input[type="text"], input[type="email"]');
         const pass = form.querySelector('input[type="password"]');
-        if (!user || !pass) { fail("unknown"); return; }
+        if (!user || !pass) { console.debug("Grading Scanner: login form fields not found; sign-in skipped."); return; }
 
+        // Recorded in storage (no credentials) so a lost result page (tab
+        // closed mid-login) can never lead to a second automatic attempt.
+        updateRecord({ pendingAttemptAt: Date.now() });
         ss("set", ATTEMPTED_KEY, "1");
         ss("set", RETURN_KEY, location.href);
         try { localStorage.setItem(ATTEMPT_AT_KEY, String(Date.now())); } catch (e) { /* ignore */ }
@@ -188,16 +194,28 @@
 
     /* ---------- logout detection ---------- */
 
-    // Capture phase so paused is written before the navigation starts.
-    document.addEventListener("click", e => {
+    function markPaused() {
+        if (current) { updateRecord({ paused: true }); return; }
+        // Initial storage read not finished yet: read, then write.
+        chrome.storage.local.get("rememberMe", res => {
+            if (!res.rememberMe) return;
+            current = Object.assign({}, res.rememberMe, { paused: true });
+            chrome.storage.local.set({ rememberMe: current });
+        });
+    }
+
+    function onLogoutLinkClick(e) {
         const link = e.target && e.target.closest && e.target.closest(LOGOUT_SELECTOR);
-        if (link) updateRecord({ paused: true });
-    }, true);
+        if (link) markPaused();
+    }
+
+    // Capture phase so paused is written before the navigation starts.
+    // auxclick covers a middle-click (logout opened in a new tab).
+    document.addEventListener("click", onLogoutLinkClick, true);
+    document.addEventListener("auxclick", e => { if (e.button === 1) onLogoutLinkClick(e); }, true);
 
     document.addEventListener("submit", e => {
-        if (e.target && e.target.matches && e.target.matches(LOGOUT_FORM_SELECTOR)) {
-            updateRecord({ paused: true });
-        }
+        if (e.target && e.target.matches && e.target.matches(LOGOUT_FORM_SELECTOR)) markPaused();
     }, true);
 
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -215,7 +233,9 @@
             ss("del", ATTEMPTED_KEY);
             ss("del", RETURN_KEY);
             // A successful (manual or automatic) login resumes auto sign-in.
-            if (current && current.paused) updateRecord({ paused: false });
+            if (current && (current.paused || current.pendingAttemptAt)) {
+                updateRecord({ paused: false, pendingAttemptAt: null });
+            }
             if (returnTo) {
                 let target = null;
                 try { target = new URL(returnTo); } catch (e) { /* ignore */ }
@@ -236,12 +256,23 @@
             return;
         }
 
+        // An attempt was submitted but its result page was never seen here
+        // (tab closed, or another tab). Never attempt again: fail instead.
+        // A very recent attempt may still be completing in another tab, so
+        // wait out the cooldown before declaring it failed.
+        if (current.pendingAttemptAt) {
+            if (Date.now() - Number(current.pendingAttemptAt) < ATTEMPT_COOLDOWN_MS) return;
+            fail(classifyFailure());
+            return;
+        }
+
         const state = {
             enabled: !!current.enabled,
             hasCredentials: !!(current.username && current.password),
             loggedIn: false,
             paused: !!current.paused,
-            failed: current.failed || null
+            failed: current.failed || null,
+            pendingAttempt: !!current.pendingAttemptAt
         };
         if (!shouldAttemptLogin(state)) return;
         if (recentAttemptElsewhere()) return;

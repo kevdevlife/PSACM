@@ -421,7 +421,7 @@ document.getElementById("scan").addEventListener("click", async () => {
             setStatus("Enter a username and password first.");
             return;
         }
-        const next = { enabled: authEnabled.checked, username, password, paused: false, failed: null };
+        const next = { enabled: authEnabled.checked, username, password, paused: false, failed: null, pendingAttemptAt: null };
         chrome.storage.local.set({ rememberMe: next }, () => {
             authPassword.value = "";
             setStatus("Details saved.");

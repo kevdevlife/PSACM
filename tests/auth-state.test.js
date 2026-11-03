@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { shouldAttemptLogin } = require("../lib/auth-state.js");
 
-const ok = { enabled: true, hasCredentials: true, loggedIn: false, paused: false, failed: null };
+const ok = { enabled: true, hasCredentials: true, loggedIn: false, paused: false, failed: null, pendingAttempt: false };
 
 test("happy path attempts login", () => {
     assert.equal(shouldAttemptLogin(ok), true);
@@ -26,4 +26,8 @@ test("paused (manual logout) does not attempt", () => {
 
 test("failed state does not attempt", () => {
     assert.equal(shouldAttemptLogin({ ...ok, failed: "captcha" }), false);
+});
+
+test("pending attempt (result page never seen) does not attempt", () => {
+    assert.equal(shouldAttemptLogin({ ...ok, pendingAttempt: true }), false);
 });
