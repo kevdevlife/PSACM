@@ -184,23 +184,17 @@ function injectPageHighlights(hits) {
     FILTER FORM INJECTION
 ------------------------------ */
 
-function applyGraderFilter(activeGraders) {
-    document.querySelectorAll(".article-row").forEach(row => {
+const filterState = { graders: new Set(), photoOnly: false };
+
+function applyVisibility() {
+    currentListings.forEach(listing => {
+        const row = listing.row;
+        // Displayed grade only (dataset is set solely for enabled graders)
         const grader = row.dataset.gsGrader;
-
-        if (activeGraders.size === 0) {
-            // Nothing checked — show everything
-            row.style.display = "";
-            return;
-        }
-
-        if (!grader) {
-            // Ungraded row — hide when a grader filter is active
-            row.style.display = "none";
-            return;
-        }
-
-        row.style.display = activeGraders.has(grader) ? "" : "none";
+        const graderOk = filterState.graders.size === 0 ||
+            (!!grader && filterState.graders.has(grader));
+        const photoOk = !filterState.photoOnly || listing.hasPhoto;
+        row.style.display = graderOk && photoOk ? "" : "none";
     });
 }
 
@@ -208,6 +202,9 @@ function injectFilterForm(gradedHits) {
     // Remove stale injection on re-scan
     const existing = document.getElementById("gs-filter-accordion-item");
     if (existing) existing.remove();
+
+    // Fresh checkboxes are unchecked, so the grader selection starts empty
+    filterState.graders.clear();
 
     const articleFilters = document.getElementById("articleFilters");
     if (!articleFilters) return;
@@ -222,7 +219,6 @@ function injectFilterForm(gradedHits) {
     const presentGraders = GRADING_PATTERNS.filter(p => graderCounts[p.name]);
     if (presentGraders.length === 0) return;
 
-    const activeGraders = new Set();
     const accordionId = "articleFilterGradedCards";
 
     // Build accordion item matching Cardmarket's Bootstrap accordion structure
@@ -309,9 +305,9 @@ function injectFilterForm(gradedHits) {
         filterBox.appendChild(formCheck);
 
         checkbox.addEventListener("change", () => {
-            if (checkbox.checked) activeGraders.add(grader.name);
-            else activeGraders.delete(grader.name);
-            applyGraderFilter(activeGraders);
+            if (checkbox.checked) filterState.graders.add(grader.name);
+            else filterState.graders.delete(grader.name);
+            applyVisibility();
         });
     });
 
@@ -336,15 +332,15 @@ function injectFilterForm(gradedHits) {
     selectAllBtn.addEventListener("click", () => {
         filterBox.querySelectorAll("input[type=checkbox]").forEach(cb => {
             cb.checked = true;
-            activeGraders.add(cb.id.replace("gs-grader-cb-", "").toUpperCase());
+            filterState.graders.add(cb.id.replace("gs-grader-cb-", "").toUpperCase());
         });
-        applyGraderFilter(activeGraders);
+        applyVisibility();
     });
 
     deselectAllBtn.addEventListener("click", () => {
         filterBox.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
-        activeGraders.clear();
-        applyGraderFilter(activeGraders);
+        filterState.graders.clear();
+        applyVisibility();
     });
 
     btnRow.appendChild(selectAllBtn);
@@ -358,6 +354,95 @@ function injectFilterForm(gradedHits) {
 
     // Insert as the first item in the accordion so it's prominent
     articleFilters.insertBefore(accordionItem, articleFilters.firstChild);
+}
+
+function injectPhotoFilter() {
+    const existing = document.getElementById("gs-photo-accordion-item");
+    if (existing) existing.remove();
+
+    const articleFilters = document.getElementById("articleFilters");
+    if (!articleFilters) return Promise.resolve();
+
+    const accordionId = "articleFilterPhoto";
+
+    const item = document.createElement("div");
+    item.id = "gs-photo-accordion-item";
+    item.className = "accordion-item";
+
+    const header = document.createElement("div");
+    header.className = "accordion-header";
+
+    const headerLink = document.createElement("a");
+    headerLink.href = `#${accordionId}`;
+    headerLink.setAttribute("data-bs-parent", "#articleFilters");
+    headerLink.setAttribute("data-bs-toggle", "collapse");
+    headerLink.setAttribute("aria-controls", accordionId);
+    headerLink.setAttribute("aria-expanded", "true");
+
+    const h3 = document.createElement("h3");
+    h3.className = "h-100 text-nowrap";
+    const icon = document.createElement("span");
+    icon.className = "fonticon-camera";
+    const name = document.createElement("span");
+    name.className = "filterName text-nowrap me-1";
+    name.textContent = "Photo";
+    h3.appendChild(icon);
+    h3.appendChild(document.createTextNode(" "));
+    h3.appendChild(name);
+    headerLink.appendChild(h3);
+    header.appendChild(headerLink);
+    item.appendChild(header);
+
+    const collapseDiv = document.createElement("div");
+    collapseDiv.id = accordionId;
+    collapseDiv.className = "accordion-collapse collapse show";
+
+    const itemBody = document.createElement("div");
+    itemBody.className = "item-body-wrapper";
+
+    const formCheck = document.createElement("div");
+    formCheck.className = "form-check";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = "gs-photo-cb";
+    checkbox.className = "form-check-input mb-1 me-2";
+    checkbox.style.cursor = "pointer";
+
+    const label = document.createElement("label");
+    label.htmlFor = "gs-photo-cb";
+    label.className = "form-check-label";
+    label.style.cssText = "cursor: pointer; user-select: none;";
+    label.textContent = "Only listings with photo";
+
+    formCheck.appendChild(checkbox);
+    formCheck.appendChild(label);
+    itemBody.appendChild(formCheck);
+    collapseDiv.appendChild(itemBody);
+    item.appendChild(collapseDiv);
+
+    // Right after Graded Cards, or first if that item is absent
+    const graded = document.getElementById("gs-filter-accordion-item");
+    if (graded && graded.parentNode === articleFilters) {
+        graded.after(item);
+    } else {
+        articleFilters.insertBefore(item, articleFilters.firstChild);
+    }
+
+    checkbox.addEventListener("change", () => {
+        filterState.photoOnly = checkbox.checked;
+        chrome.storage.local.set({ photoOnly: checkbox.checked });
+        applyVisibility();
+    });
+
+    // Restore persisted state
+    return new Promise(resolve =>
+        chrome.storage.local.get({ photoOnly: false }, res => {
+            filterState.photoOnly = !!res.photoOnly;
+            checkbox.checked = filterState.photoOnly;
+            resolve();
+        })
+    );
 }
 
 /* -----------------------------
@@ -387,6 +472,8 @@ async function autoScan() {
 
     injectPageHighlights(hits);
     injectFilterForm(hits);
+    await injectPhotoFilter();
+    applyVisibility();
 }
 
 if (document.readyState === "loading") {
@@ -417,6 +504,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
                 injectPageHighlights(hits);
                 injectFilterForm(hits);
+                await injectPhotoFilter();
+                applyVisibility();
                 sendResponse({ success: true, totalGraded: hits.length, gradedHits: hits });
             } catch (err) {
                 sendResponse({ error: err.message });
