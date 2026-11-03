@@ -1,7 +1,7 @@
 {
     "name": "Cardmarket Grading Scanner",
-    "description": "Scan Cardmarket pages for graded card listings (PSA, CGC, BGS, TAG, ACE, MNT, SGC).",
-    "version": "2.3",
+    "description": "Scan Cardmarket for graded listings (PSA, CGC, BGS, TAG, ACE, MNT, SGC) with favourites, photo filter, price overview, remember me.",
+    "version": "3.0",
     "manifest_version": 3,
     "permissions": [
         "activeTab",
