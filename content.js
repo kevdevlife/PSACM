@@ -60,6 +60,10 @@ function isProductPage() {
         !!document.querySelector(".article-row");
 }
 
+function rowHasPhoto(row) {
+    return !!row.querySelector(".fonticon-camera");
+}
+
 function readListing(row) {
     if (!row || !row.id) return null;
 
@@ -83,7 +87,7 @@ function readListing(row) {
 
     const priceText =
         row.querySelector(".price-container .text-end")?.textContent?.trim() || "";
-    const hasPhoto = !!row.querySelector(".fonticon-camera");
+    const hasPhoto = rowHasPhoto(row);
 
     const commentText =
         row.querySelector(".product-comments > div > span")?.textContent?.toLowerCase();
@@ -187,13 +191,12 @@ function injectPageHighlights(hits) {
 const filterState = { graders: new Set(), photoOnly: false };
 
 function applyVisibility() {
-    currentListings.forEach(listing => {
-        const row = listing.row;
+    document.querySelectorAll(".article-row").forEach(row => {
         // Displayed grade only (dataset is set solely for enabled graders)
         const grader = row.dataset.gsGrader;
         const graderOk = filterState.graders.size === 0 ||
             (!!grader && filterState.graders.has(grader));
-        const photoOk = !filterState.photoOnly || listing.hasPhoto;
+        const photoOk = !filterState.photoOnly || rowHasPhoto(row);
         row.style.display = graderOk && photoOk ? "" : "none";
     });
 }
