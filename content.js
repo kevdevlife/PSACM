@@ -483,13 +483,11 @@ function injectStars() {
             }
         });
 
-        // Purely additive: sibling before the desktop form wrapper, never inside a form
-        const group = actions.querySelector(".input-group");
+        // Purely additive: first child of the desktop wrapper (before the form), never inside a form
         const form = actions.querySelector("form");
-        let wrapper = form;
-        while (wrapper && group && wrapper.parentNode !== group) wrapper = wrapper.parentNode;
-        if (group && form && wrapper && wrapper.parentNode === group) {
-            group.insertBefore(btn, wrapper);
+        const wrapper = form && form.parentElement;
+        if (wrapper && wrapper !== actions && actions.contains(wrapper)) {
+            wrapper.insertBefore(btn, form);
         } else {
             actions.insertBefore(btn, actions.firstChild);
         }
@@ -561,24 +559,33 @@ function renderOverview() {
     const section = header ? header.parentElement : document.querySelector(".table-body")?.parentElement;
     if (!section || !section.parentElement) return;
 
-    const line = () => {
+    const PRICE_STYLE = "font-variant-numeric: tabular-nums; white-space: nowrap;";
+    const GRID_STYLE = "display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 3px; align-items: center;";
+    const makeBox = (title) => {
         const d = document.createElement("div");
-        d.style.cssText = "display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0; font-size: 13px;";
+        d.style.cssText = "flex: 1 1 260px; border: 1px solid var(--bs-border-color, rgba(255,255,255,.15)); border-radius: 6px; padding: 8px 12px; font-size: 13px;";
+        const t = document.createElement("div");
+        t.className = "small text-muted";
+        t.style.cssText = "margin-bottom: 4px;";
+        t.textContent = title;
+        d.appendChild(t);
         return d;
     };
-    const item = (badge, priceText) => {
-        const s = document.createElement("span");
-        s.appendChild(badge);
-        s.appendChild(document.createTextNode(" from " + priceText));
-        return s;
+    const priceSpan = (text) => {
+        const p = document.createElement("span");
+        p.style.cssText = PRICE_STYLE;
+        p.textContent = text;
+        return p;
     };
 
     const box = document.createElement("div");
     box.id = "gs-overview";
-    box.style.cssText = "margin: 8px 0;";
+    box.style.cssText = "display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;";
 
     if (raw.length) {
-        const l = line();
+        const rb = makeBox("Raw · lowest price");
+        const grid = document.createElement("div");
+        grid.style.cssText = GRID_STYLE;
         for (const r of raw) {
             const outer = document.createElement("span");
             outer.className = "article-condition condition-" + r.code.toLowerCase();
@@ -592,21 +599,42 @@ function renderOverview() {
                 b.style.color = col.fg;
             }
             outer.appendChild(b);
-            l.appendChild(item(outer, r.priceText));
+            grid.appendChild(outer);
+            grid.appendChild(priceSpan(r.priceText));
         }
-        box.appendChild(l);
+        rb.appendChild(grid);
+        box.appendChild(rb);
     }
     if (graded.length) {
-        const l = line();
+        const gb = makeBox("Graded · lowest price");
+        const grid = document.createElement("div");
+        grid.style.cssText = GRID_STYLE;
+        const groups = [];
         for (const g of graded) {
-            const b = document.createElement("span");
-            b.className = "gs-overview-grade";
-            b.textContent = g.gradeText;
-            styleGradeBadge(b, g.color);
-            b.style.marginLeft = "0";
-            l.appendChild(item(b, g.priceText));
+            const last = groups[groups.length - 1];
+            if (last && last.grader === g.grader) last.items.push(g);
+            else groups.push({ grader: g.grader, color: g.color, items: [g] });
         }
-        box.appendChild(l);
+        for (const grp of groups) {
+            const name = document.createElement("span");
+            name.style.cssText = "font-weight: bold;" + (grp.color ? " color: " + grp.color + ";" : "");
+            name.textContent = grp.grader;
+            grid.appendChild(name);
+            const list = document.createElement("span");
+            list.style.cssText = "display: flex; flex-wrap: wrap; gap: 0 14px;";
+            for (const g of grp.items) {
+                const it = document.createElement("span");
+                it.style.cssText = PRICE_STYLE;
+                const gr = document.createElement("strong");
+                gr.textContent = String(g.grade);
+                it.appendChild(gr);
+                it.appendChild(document.createTextNode(" " + g.priceText));
+                list.appendChild(it);
+            }
+            grid.appendChild(list);
+        }
+        gb.appendChild(grid);
+        box.appendChild(gb);
     }
 
     // Directly above the listings table section, same level as .table-body's container
