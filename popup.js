@@ -128,7 +128,6 @@ function injectStickyHeader(count, isFavorites) {
                 <thead><tr>
                     <th>Card</th>
                     <th>Condition</th>
-                    <th>Seller</th>
                     <th>Price</th>
                     <th>★</th>
                 </tr></thead>
@@ -138,7 +137,6 @@ function injectStickyHeader(count, isFavorites) {
             <table class="scan-table">
                 <thead><tr>
                     <th>Condition</th>
-                    <th>Seller</th>
                     <th>Price</th>
                     <th>★</th>
                 </tr></thead>
@@ -191,7 +189,6 @@ async function renderTable(hits, isFavorites = false) {
         html += `<tr class="clickable-row" data-url="${escapeHtml(hit.url)}">
             ${card}
             <td>${conditionCell(hit.condition)}</td>
-            <td class="seller" title="${escapeHtml(hit.seller)}">${escapeHtml(hit.seller)}</td>
             <td class="price">${escapeHtml(hit.priceText)}</td>
             <td style="text-align:center"><a href="#" class="favStar" data-id="${escapeHtml(hit.id)}">${isFav ? '★' : '☆'}</a></td>
         </tr>`;
