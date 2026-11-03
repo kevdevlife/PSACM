@@ -64,9 +64,8 @@ function scanGradedCards(enabledCompanies = null) {
 
         const text = commentSpan.innerText.toLowerCase();
 
-        const grade = detectGrade(text);
+        const grade = detectGrade(text, enabledCompanies);
         if (!grade) return;
-        if (enabledCompanies && !enabledCompanies.includes(grade.grader)) return;
 
         const priceElement = row.querySelector(".price-container .text-end");
         const price = priceElement ? priceElement.textContent.trim() : "N/A";

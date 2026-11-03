@@ -28,3 +28,7 @@ test("words after a sentence boundary don't count as potential", () => {
 test("first valid grader wins over a potential one", () => {
     assert.equal(detectGrade("CGC 9.5 slab, psa 10 chance").gradeText, "CGC 9.5");
 });
+test("allowedGraders restricts which graders are considered", () => {
+    assert.equal(detectGrade("psa 10 and cgc 9", ["CGC"]).gradeText, "CGC 9");
+    assert.equal(detectGrade("psa 10 and cgc 9").gradeText, "PSA 10");
+});
