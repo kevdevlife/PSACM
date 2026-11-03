@@ -6,7 +6,8 @@
    possible while implementing); NEEDS A LIVE CHECK:
    - Logged in  = an `a[href*="User_Logout"]` link exists (this one IS verified).
    - Logged out = page loaded and no such link.
-   - Login form = the <form> that contains an input[type=password]. Expected:
+   - Login form = the first <form> whose action contains "Login"
+     (case-insensitive) and that has exactly one input[type=password]. Expected:
      fields `username` and `userPassword`, action containing `User_Login`,
      hidden `__cmtkn` token (left untouched, the site fills it).
      Username is filled via input[name=username], falling back to the form's
@@ -140,9 +141,14 @@
 
     /* ---------- sign-in attempt ---------- */
 
+    // Only a real login form: its action mentions "Login" and it has exactly
+    // one password field. Registration / password-reset forms (two password
+    // fields, or a different action) never receive credentials.
     function findLoginForm() {
-        return Array.from(document.querySelectorAll("form"))
-            .find(f => f.querySelector('input[type="password"]')) || null;
+        return Array.from(document.querySelectorAll("form")).find(f =>
+            /login/i.test(f.getAttribute("action") || "") &&
+            f.querySelectorAll('input[type="password"]').length === 1
+        ) || null;
     }
 
     function setValue(input, value) {
