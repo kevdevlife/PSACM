@@ -3,35 +3,6 @@ console.log("[Grading Scanner] content script active");
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
 /* -----------------------------
-   GRADING COMPANIES CONFIG
------------------------------- */
-
-const GRADING_PATTERNS = [
-    { name: "PSA", pattern: /psa\s*(?:10|[1-9])/i, color: "#d9534f" },
-    { name: "CGC", pattern: /cgc\s*(?:10|9\.5|[1-9](?:\.\d)?)/i, color: "#ff6b35" },
-    { name: "BGS", pattern: /(?:bgs|beckett)\s*(?:10|9\.5|[1-9](?:\.\d)?)/i, color: "#f7931e" },
-    { name: "TAG", pattern: /tag\s*(?:10|[1-9])/i, color: "#4a90e2" },
-    { name: "ACE", pattern: /ace\s*(?:10|[1-9])/i, color: "#50c878" },
-    { name: "MNT", pattern: /mnt\s*(?:10|[1-9])/i, color: "#9b59b6" },
-    { name: "SGC", pattern: /sgc\s*(?:10|[1-9])/i, color: "#e74c3c" }
-];
-
-// Words that, when they appear right before a grade match ("not a PSA 10",
-// "far from CGC 9"), mean the seller is denying the grade rather than
-// claiming it — those must not be flagged as graded listings.
-const NEGATION_CUES = /\b(not|no|non|isn'?t|wasn'?t|aren'?t|ain'?t|never|won'?t|wouldn'?t|doesn'?t|didn'?t|far from|nowhere near|hardly|barely)\b/i;
-
-function isNegatedMatch(text, matchIndex) {
-    const windowStart = Math.max(0, matchIndex - 40);
-    const before = text.slice(windowStart, matchIndex);
-    const boundary = Math.max(
-        before.lastIndexOf("."), before.lastIndexOf("!"), before.lastIndexOf("?"),
-        before.lastIndexOf(","), before.lastIndexOf(";")
-    );
-    return NEGATION_CUES.test(before.slice(boundary + 1));
-}
-
-/* -----------------------------
    SCROLL + HIGHLIGHT HANDLER
 ------------------------------ */
 
@@ -86,10 +57,6 @@ function scanGradedCards(enabledCompanies = null) {
         document.querySelector(".page-title-container > div > h1")?.innerText?.trim() ||
         "Unknown";
 
-    const companiesToScan = enabledCompanies
-        ? GRADING_PATTERNS.filter(p => enabledCompanies.includes(p.name))
-        : GRADING_PATTERNS;
-
     rows.forEach((row) => {
         const commentSpan = row.querySelector(".product-comments > div > span");
         if (!commentSpan) return;
@@ -97,32 +64,28 @@ function scanGradedCards(enabledCompanies = null) {
 
         const text = commentSpan.innerText.toLowerCase();
 
-        for (const grader of companiesToScan) {
-            const match = text.match(grader.pattern);
-            if (!match) continue;
-            if (isNegatedMatch(text, match.index)) continue;
+        const grade = detectGrade(text);
+        if (!grade) return;
+        if (enabledCompanies && !enabledCompanies.includes(grade.grader)) return;
 
-            const priceElement = row.querySelector(".price-container .text-end");
-            const price = priceElement ? priceElement.textContent.trim() : "N/A";
+        const priceElement = row.querySelector(".price-container .text-end");
+        const price = priceElement ? priceElement.textContent.trim() : "N/A";
 
-            // Cardmarket gives every listing row its own unique id, so this
-            // anchor points at this exact listing even when the same seller
-            // has multiple listings for the card.
-            const url = new URL(window.location.href);
-            url.hash = row.id;
+        // Cardmarket gives every listing row its own unique id, so this
+        // anchor points at this exact listing even when the same seller
+        // has multiple listings for the card.
+        const url = new URL(window.location.href);
+        url.hash = row.id;
 
-            results.push({
-                anchorName: row.id,
-                cardName,
-                price,
-                grader: grader.name,
-                gradeText: match[0].toUpperCase().replace(/\s+/g, " "),
-                color: grader.color,
-                url: url.toString()
-            });
-
-            break;
-        }
+        results.push({
+            anchorName: row.id,
+            cardName,
+            price,
+            grader: grade.grader,
+            gradeText: grade.gradeText,
+            color: grade.color,
+            url: url.toString()
+        });
     });
 
     return results;

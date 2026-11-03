@@ -22,7 +22,7 @@
                 "https://www.cardmarket.com/*/*",
                 "https://www.cardmarket.com/*/*/*"
             ],
-            "js": ["content.js"]
+            "js": ["lib/grading.js", "content.js"]
         }
     ]
 }
