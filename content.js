@@ -607,33 +607,55 @@ function renderOverview() {
     }
     if (graded.length) {
         const gb = makeBox("Graded · lowest price");
-        const grid = document.createElement("div");
-        grid.style.cssText = GRID_STYLE;
+
+        // Grader rows (in buildOverview's order) × grade columns (high → low)
         const groups = [];
         for (const g of graded) {
             const last = groups[groups.length - 1];
-            if (last && last.grader === g.grader) last.items.push(g);
-            else groups.push({ grader: g.grader, color: g.color, items: [g] });
+            if (last && last.grader === g.grader) last.byGrade.set(String(g.grade), g.priceText);
+            else groups.push({ grader: g.grader, color: g.color, byGrade: new Map([[String(g.grade), g.priceText]]) });
         }
+        const grades = [...new Set(graded.map(g => String(g.grade)))]
+            .sort((a, b) => parseFloat(b) - parseFloat(a));
+
+        const CELL = "padding: 2px 10px 2px 0; text-align: left; white-space: nowrap;";
+        const scroller = document.createElement("div");
+        scroller.style.cssText = "overflow-x: auto;";
+        const table = document.createElement("table");
+        table.style.cssText = "border-collapse: collapse;";
+
+        const headRow = table.createTHead().insertRow();
+        headRow.appendChild(document.createElement("th"));
+        for (const grade of grades) {
+            const th = document.createElement("th");
+            th.style.cssText = CELL + " font-weight: bold;";
+            th.textContent = grade;
+            headRow.appendChild(th);
+        }
+
+        const body = table.createTBody();
         for (const grp of groups) {
-            const name = document.createElement("span");
-            name.style.cssText = "font-weight: bold;" + (grp.color ? " color: " + grp.color + ";" : "");
+            const tr = body.insertRow();
+            const name = document.createElement("th");
+            name.scope = "row";
+            name.style.cssText = CELL + " font-weight: bold;" + (grp.color ? " color: " + grp.color + ";" : "");
             name.textContent = grp.grader;
-            grid.appendChild(name);
-            const list = document.createElement("span");
-            list.style.cssText = "display: flex; flex-wrap: wrap; gap: 0 14px;";
-            for (const g of grp.items) {
-                const it = document.createElement("span");
-                it.style.cssText = PRICE_STYLE;
-                const gr = document.createElement("strong");
-                gr.textContent = String(g.grade);
-                it.appendChild(gr);
-                it.appendChild(document.createTextNode(" " + g.priceText));
-                list.appendChild(it);
+            tr.appendChild(name);
+            for (const grade of grades) {
+                const td = tr.insertCell();
+                td.style.cssText = CELL + PRICE_STYLE;
+                const price = grp.byGrade.get(grade);
+                if (price) {
+                    td.textContent = price;
+                } else {
+                    td.textContent = "–";
+                    td.style.opacity = "0.4";
+                }
             }
-            grid.appendChild(list);
         }
-        gb.appendChild(grid);
+
+        scroller.appendChild(table);
+        gb.appendChild(scroller);
         box.appendChild(gb);
     }
 
