@@ -32,3 +32,23 @@ test("allowedGraders restricts which graders are considered", () => {
     assert.equal(detectGrade("psa 10 and cgc 9", ["CGC"]).gradeText, "CGC 9");
     assert.equal(detectGrade("psa 10 and cgc 9").gradeText, "PSA 10");
 });
+test("grader names inside other words are not graded", () => {
+    assert.equal(detectGrade("stage 1"), null);
+    assert.equal(detectGrade("space 9"), null);
+    assert.equal(detectGrade("replace 10"), null);
+});
+test("PSA half grades are detected", () => {
+    assert.equal(detectGrade("psa 8.5").gradeText, "PSA 8.5");
+});
+test("a decimal point is not a sentence boundary for potential wording", () => {
+    assert.equal(detectGrade("psa 9.5 chance"), null);
+});
+test("potential wording right before the grade is not graded", () => {
+    for (const t of ["potential PSA 10", "possible psa 10", "candidate psa 10",
+                     "Potential: PSA 10", "psa10 possible"]) {
+        assert.equal(detectGrade(t), null, t);
+    }
+});
+test("potential wording earlier in the text does not block a later grade", () => {
+    assert.equal(detectGrade("potential buyers welcome, psa 10 slab").gradeText, "PSA 10");
+});
