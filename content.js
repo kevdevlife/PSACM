@@ -25,12 +25,15 @@ async function loadAllResults() {
 
 let currentListings = [];
 
-function isProductPage() {
+function isProductUrl() {
     const path = window.location.pathname;
     return path.includes("/Products/") &&
         !path.includes("/Products/Search") &&
-        !!document.querySelector(".page-title-container h1") &&
-        !!document.querySelector(".article-row");
+        !!document.querySelector(".page-title-container h1");
+}
+
+function isProductPage() {
+    return isProductUrl() && !!document.querySelector(".article-row");
 }
 
 function rowHasPhoto(row) {
@@ -499,7 +502,11 @@ function showNotice(text) {
     document.getElementById("gs-notice")?.remove();
     const container = document.querySelector(".table-body")?.parentElement ||
         document.querySelector(".article-row")?.parentElement;
-    if (!container) return;
+    const title = document.querySelector(".page-title-container");
+    if (!container && !title) {
+        console.warn("[Grading Scanner] no place to show notice:", text);
+        return;
+    }
 
     const notice = document.createElement("div");
     notice.id = "gs-notice";
@@ -514,17 +521,22 @@ function showNotice(text) {
     close.addEventListener("click", () => notice.remove());
     notice.appendChild(close);
 
-    container.prepend(notice);
+    if (container) container.prepend(notice);
+    else title.after(notice);
 }
 
 function jumpToHash() {
-    if (!isProductPage()) return;
+    if (!isProductUrl()) return;
     const hash = window.location.hash.slice(1);
     if (!hash.startsWith("articleRow")) return;
 
     const row = document.getElementById(hash);
     if (!row) {
         showNotice("This listing has been sold or removed.");
+        return;
+    }
+    if (row.style.display === "none") {
+        showNotice("This listing is hidden by your filters.");
         return;
     }
 
@@ -548,9 +560,16 @@ window.addEventListener("hashchange", () => {
 ------------------------------ */
 
 async function autoScan() {
-    if (!isProductPage()) return;
+    if (!isProductUrl()) return;
 
     await loadAllResults();
+
+    if (!isProductPage()) {
+        // No offers left at all: still report a missing target listing
+        listingsReady = true;
+        jumpToHash();
+        return;
+    }
 
     const stored = await new Promise(resolve =>
         chrome.storage.local.get(
