@@ -77,32 +77,27 @@ function getEnabledCompanies() {
             FAVORITES
 ------------------------------ */
 
-async function getFavorites() {
-    return new Promise(resolve => {
-        chrome.storage.local.get({ favorites: [] }, res => resolve(res.favorites));
-    });
-}
-
-async function saveFavorites(favorites) {
-    return new Promise(resolve => {
-        chrome.storage.local.set({ favorites }, () => resolve());
-    });
-}
-
 /* -----------------------------
           SORT RESULTS
 ------------------------------ */
 
-function sortByGradeAndPrice(hits) {
+function sortByPrice(hits) {
+    const p = h => parsePrice(h.priceText);
     return hits.sort((a, b) => {
-        const gradeA = parseFloat(a.gradeText.match(/[\d.]+/)?.[0] || 0);
-        const gradeB = parseFloat(b.gradeText.match(/[\d.]+/)?.[0] || 0);
-        if (gradeB !== gradeA) return gradeB - gradeA;
-
-        const priceA = parseFloat(a.price.replace(/[^0-9.,]/g, '').replace(',', '.')) || Infinity;
-        const priceB = parseFloat(b.price.replace(/[^0-9.,]/g, '').replace(',', '.')) || Infinity;
-        return priceA - priceB;
+        const pa = p(a), pb = p(b);
+        if (pa === null && pb === null) return 0;
+        if (pa === null) return 1;
+        if (pb === null) return -1;
+        return pa - pb;
     });
+}
+
+function conditionCell(c) {
+    if (c.type === "graded") {
+        return `<span class="grader-badge" style="background-color:${escapeHtml(c.color)}">${escapeHtml(c.gradeText)}</span>`;
+    }
+    const col = CONDITION_COLORS[c.code] || { bg: "#555", fg: "#fff" };
+    return `<span class="grader-badge" style="background-color:${escapeHtml(col.bg)};color:${escapeHtml(col.fg)}">${escapeHtml(c.code)}</span>`;
 }
 
 /* -----------------------------
@@ -132,8 +127,8 @@ function injectStickyHeader(count, isFavorites) {
             <table class="fav-table">
                 <thead><tr>
                     <th>Card</th>
-                    <th>Grader</th>
-                    <th>Grade</th>
+                    <th>Condition</th>
+                    <th>Seller</th>
                     <th>Price</th>
                     <th>★</th>
                 </tr></thead>
@@ -142,8 +137,8 @@ function injectStickyHeader(count, isFavorites) {
         headWrapper.innerHTML = `
             <table class="scan-table">
                 <thead><tr>
-                    <th>Grader</th>
-                    <th>Grade</th>
+                    <th>Condition</th>
+                    <th>Seller</th>
                     <th>Price</th>
                     <th>★</th>
                 </tr></thead>
@@ -162,11 +157,11 @@ async function renderTable(hits, isFavorites = false) {
     let hitsToShow = hits;
 
     if (showOnlyFavs && !isFavorites) {
-        hitsToShow = hits.filter(hit => favorites.some(f => f.url === hit.url));
+        hitsToShow = hits.filter(hit => favorites.some(f => f.id === hit.id));
     }
 
     if (!showOnlyFavs && !isFavorites) {
-        hitsToShow = sortByGradeAndPrice([...hitsToShow]);
+        hitsToShow = sortByPrice([...hitsToShow]);
     }
 
     // Empty state
@@ -187,32 +182,21 @@ async function renderTable(hits, isFavorites = false) {
     // Build tbody-only table (no thead here — that's in the sticky wrapper)
     let html = "";
 
-    if (isShowingFavs) {
-        html += `<table class="fav-table"><tbody>`;
-        hitsToShow.forEach(hit => {
-            const isFav = favorites.some(f => f.url === hit.url);
-            html += `<tr class="clickable-row" data-url="${hit.url}" data-anchor="${hit.anchorName}">
-                <td class="card-name" title="${hit.cardName}">${hit.cardName}</td>
-                <td><span class="grader-badge" style="background-color:${hit.color}">${hit.grader}</span></td>
-                <td class="grade">${hit.gradeText}</td>
-                <td class="price">${hit.price}</td>
-                <td style="text-align:center"><a href="#" class="favStar" data-url="${hit.url}">${isFav ? '★' : '☆'}</a></td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
-    } else {
-        html += `<table class="scan-table"><tbody>`;
-        hitsToShow.forEach(hit => {
-            const isFav = favorites.some(f => f.url === hit.url);
-            html += `<tr class="clickable-row" data-url="${hit.url}" data-anchor="${hit.anchorName}">
-                <td><span class="grader-badge" style="background-color:${hit.color}">${hit.grader}</span></td>
-                <td class="grade">${hit.gradeText}</td>
-                <td class="price">${hit.price}</td>
-                <td style="text-align:center"><a href="#" class="favStar" data-url="${hit.url}">${isFav ? '★' : '☆'}</a></td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
-    }
+    html += `<table class="${isShowingFavs ? "fav-table" : "scan-table"}"><tbody>`;
+    hitsToShow.forEach(hit => {
+        const isFav = favorites.some(f => f.id === hit.id);
+        const card = isShowingFavs
+            ? `<td class="card-name" title="${escapeHtml(hit.cardName)}">${escapeHtml(hit.cardName)}</td>`
+            : "";
+        html += `<tr class="clickable-row" data-url="${escapeHtml(hit.url)}">
+            ${card}
+            <td>${conditionCell(hit.condition)}</td>
+            <td class="seller" title="${escapeHtml(hit.seller)}">${escapeHtml(hit.seller)}</td>
+            <td class="price">${escapeHtml(hit.priceText)}</td>
+            <td style="text-align:center"><a href="#" class="favStar" data-id="${escapeHtml(hit.id)}">${isFav ? '★' : '☆'}</a></td>
+        </tr>`;
+    });
+    html += `</tbody></table>`;
 
     out.innerHTML = html;
 
@@ -242,21 +226,19 @@ async function renderTable(hits, isFavorites = false) {
     out.querySelectorAll(".favStar").forEach(link => {
         link.addEventListener("click", async e => {
             e.preventDefault();
-            const url = link.dataset.url;
-            let favs = await getFavorites();
-            const existing = favs.find(f => f.url === url);
+            const id = link.dataset.id;
+            const favs = await getFavorites();
 
-            if (existing) {
-                favs = favs.filter(f => f.url !== url);
+            if (favs.some(f => f.id === id)) {
+                await removeFavorite(id);
                 link.innerHTML = '☆';
             } else {
-                const hitData = hits.find(h => h.url === url);
-                if (hitData) favs.push(hitData);
+                const hitData = hits.find(h => h.id === id);
+                if (hitData) await setFavorite(hitData);
                 link.innerHTML = '★';
             }
 
-            await saveFavorites(favs);
-            if (showOnlyFavs) renderTable(favs, true);
+            if (showOnlyFavs) renderTable(await getFavorites(), true);
         });
     });
 }
@@ -272,7 +254,7 @@ async function renderTable(hits, isFavorites = false) {
 
     // Use cache if it's for the current page and under 5 minutes old
     if (cached && cached.url === tab.url && Date.now() - cached.ts < 5 * 60 * 1000) {
-        lastGradedHits = cached.hits;
+        lastGradedHits = cached.hits.filter(isValidFavorite);
         renderTable(lastGradedHits);
     }
 })();
@@ -331,7 +313,7 @@ document.getElementById("scan").addEventListener("click", async () => {
                 out.className = "output-container no-table";
                 out.innerHTML = `<div class="empty-state">
                     <div class="empty-state-icon">❌</div>
-                    <div class="empty-state-text">Error: ${chrome.runtime.lastError.message}</div>
+                    <div class="empty-state-text">Error: ${escapeHtml(chrome.runtime.lastError.message)}</div>
                 </div>`;
                 return;
             }
@@ -340,14 +322,14 @@ document.getElementById("scan").addEventListener("click", async () => {
                 out.className = "output-container no-table";
                 out.innerHTML = `<div class="empty-state">
                     <div class="empty-state-icon">❌</div>
-                    <div class="empty-state-text">${response?.error || "No response from page"}</div>
+                    <div class="empty-state-text">${escapeHtml(response?.error || "No response from page")}</div>
                 </div>`;
                 return;
             }
 
             const { gradedHits } = response;
-            lastGradedHits = gradedHits;
-            renderTable(gradedHits);
+            lastGradedHits = gradedHits.filter(isValidFavorite);
+            renderTable(lastGradedHits);
         }
     );
 });

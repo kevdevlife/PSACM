@@ -121,19 +121,10 @@ function scanListings() {
 function gradedHits(listings, enabledCompanies = null) {
     return listings
         .filter(l => l.grade && (!enabledCompanies || enabledCompanies.includes(l.grade.grader)))
-        .map(l => ({
-            id: l.id,
-            anchorName: l.id, // interim: popup still reads anchorName/price until Task 5
-            url: l.url,
-            cardName: l.cardName,
-            seller: l.seller,
-            priceText: l.priceText,
-            price: l.priceText || "N/A",
-            language: l.language,
-            grader: l.grade.grader,
-            gradeText: l.grade.gradeText,
-            color: l.grade.color
-        }));
+        .map(l => {
+            const { savedAt, ...hit } = makeFavorite(l);
+            return hit;
+        });
 }
 
 /* -----------------------------
@@ -154,10 +145,10 @@ function injectPageHighlights(hits) {
         if (!row) return;
 
         // Tag row with grader so the filter can show/hide it
-        row.dataset.gsGrader = hit.grader;
+        row.dataset.gsGrader = hit.condition.grader;
 
         // Colored left border
-        row.style.borderLeft = `3px solid ${hit.color}`;
+        row.style.borderLeft = `3px solid ${hit.condition.color}`;
         row.style.paddingLeft = "4px";
 
         // Grade badge at the end of the attributes (always visible)
@@ -165,13 +156,13 @@ function injectPageHighlights(hits) {
         if (attrs && !attrs.querySelector(".gs-grade-badge")) {
             const badge = document.createElement("span");
             badge.className = "gs-grade-badge";
-            badge.textContent = hit.gradeText;
+            badge.textContent = hit.condition.gradeText;
             badge.style.cssText = `
                 display: inline-block;
                 margin-left: 6px;
                 padding: 1px 6px;
                 border-radius: 3px;
-                background: ${hit.color};
+                background: ${hit.condition.color};
                 color: #fff;
                 font-size: 11px;
                 font-weight: 700;
@@ -201,7 +192,7 @@ function applyVisibility() {
     });
 }
 
-function injectFilterForm(gradedHits) {
+function injectFilterForm(hits) {
     // Remove stale injection on re-scan
     const existing = document.getElementById("gs-filter-accordion-item");
     if (existing) existing.remove();
@@ -214,8 +205,9 @@ function injectFilterForm(gradedHits) {
 
     // Count hits per grader
     const graderCounts = {};
-    gradedHits.forEach(hit => {
-        graderCounts[hit.grader] = (graderCounts[hit.grader] || 0) + 1;
+    hits.forEach(hit => {
+        const g = hit.condition.grader;
+        graderCounts[g] = (graderCounts[g] || 0) + 1;
     });
 
     // Only include graders that actually appear in results

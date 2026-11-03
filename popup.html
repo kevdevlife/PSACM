@@ -344,16 +344,16 @@
         }
 
         /* Column widths — scan */
-        table.scan-table th:nth-child(1), table.scan-table td:nth-child(1) { width: 60px; } /* Grader */
-        table.scan-table th:nth-child(2), table.scan-table td:nth-child(2) { width: 80px; } /* Grade */
-        table.scan-table th:nth-child(3), table.scan-table td:nth-child(3) { width: auto; } /* Price */
+        table.scan-table th:nth-child(1), table.scan-table td:nth-child(1) { width: 84px; } /* Condition */
+        table.scan-table th:nth-child(2), table.scan-table td:nth-child(2) { width: auto; } /* Seller */
+        table.scan-table th:nth-child(3), table.scan-table td:nth-child(3) { width: 80px; } /* Price */
         table.scan-table th:nth-child(4), table.scan-table td:nth-child(4) { width: 36px; text-align: center; } /* Star */
 
         /* Column widths — favorites */
-        table.fav-table th:nth-child(1), table.fav-table td:nth-child(1) { width: 110px; } /* Card */
-        table.fav-table th:nth-child(2), table.fav-table td:nth-child(2) { width: 54px; } /* Grader */
-        table.fav-table th:nth-child(3), table.fav-table td:nth-child(3) { width: 72px; } /* Grade */
-        table.fav-table th:nth-child(4), table.fav-table td:nth-child(4) { width: auto; } /* Price */
+        table.fav-table th:nth-child(1), table.fav-table td:nth-child(1) { width: 100px; } /* Card */
+        table.fav-table th:nth-child(2), table.fav-table td:nth-child(2) { width: 84px; } /* Condition */
+        table.fav-table th:nth-child(3), table.fav-table td:nth-child(3) { width: auto; } /* Seller */
+        table.fav-table th:nth-child(4), table.fav-table td:nth-child(4) { width: 72px; } /* Price */
         table.fav-table th:nth-child(5), table.fav-table td:nth-child(5) { width: 32px; text-align: center; } /* Star */
 
         tr.clickable-row { cursor: pointer; }
@@ -600,6 +600,9 @@
         </div>
     </div>
 
+    <script src="lib/grading.js"></script>
+    <script src="lib/prices.js"></script>
+    <script src="lib/favorites.js"></script>
     <script src="popup.js"></script>
 </body>
 </html>
