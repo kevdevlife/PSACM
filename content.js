@@ -3,33 +3,6 @@ console.log("[Grading Scanner] content script active");
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
 /* -----------------------------
-   SCROLL + HIGHLIGHT HANDLER
------------------------------- */
-
-async function scrollToSellerFromHash() {
-    const rowId = window.location.hash.slice(1);
-    if (!rowId) return;
-
-    const row = document.getElementById(rowId);
-    if (!row || !row.classList.contains("article-row")) return;
-
-    row.scrollIntoView({ behavior: "smooth", block: "center" });
-    row.style.transition = "all 0.6s ease";
-    row.style.outline = "2px solid #7c9cbf";
-    row.style.borderRadius = "4px";
-
-    setTimeout(() => {
-        row.style.outline = "";
-        row.style.borderRadius = "";
-    }, 2000);
-}
-
-scrollToSellerFromHash();
-window.addEventListener("hashchange", scrollToSellerFromHash);
-
-
-
-/* -----------------------------
         LOAD ALL RESULTS
 ------------------------------ */
 
@@ -441,6 +414,136 @@ function injectPhotoFilter() {
 }
 
 /* -----------------------------
+     FAVOURITE STARS
+------------------------------ */
+
+const STAR_SAVED_COLOR = "#f5c518";
+
+function paintStar(btn, saved) {
+    btn.textContent = saved ? "★" : "☆";
+    btn.setAttribute("aria-pressed", saved ? "true" : "false");
+    btn.style.color = saved ? STAR_SAVED_COLOR : "";
+}
+
+function injectStars() {
+    for (const listing of currentListings) {
+        const row = listing.row;
+        if (!row || row.dataset.gsStar) continue;
+        const actions = row.querySelector(".actions-container");
+        if (!actions) continue;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn btn-sm gs-fav-star";
+        btn.title = "Favourite";
+        btn.style.cssText = "font-size: 1.2em; line-height: 1; padding: 0 6px; margin-right: 4px;";
+        btn.dataset.gsId = listing.id;
+        paintStar(btn, false);
+
+        btn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                if (btn.getAttribute("aria-pressed") === "true") {
+                    await removeFavorite(listing.id);
+                } else {
+                    await setFavorite(makeFavorite(listing));
+                }
+            } catch (err) {
+                console.error("[Grading Scanner] favourite toggle failed", err);
+            }
+        });
+
+        // Purely additive: sibling before the desktop form wrapper, never inside a form
+        const group = actions.querySelector(".input-group");
+        const form = actions.querySelector("form");
+        let wrapper = form;
+        while (wrapper && group && wrapper.parentNode !== group) wrapper = wrapper.parentNode;
+        if (group && form && wrapper && wrapper.parentNode === group) {
+            group.insertBefore(btn, wrapper);
+        } else {
+            actions.insertBefore(btn, actions.firstChild);
+        }
+        row.dataset.gsStar = "1";
+    }
+}
+
+function refreshStars(favoriteIds) {
+    document.querySelectorAll("button.gs-fav-star").forEach(btn => {
+        paintStar(btn, favoriteIds.has(btn.dataset.gsId));
+    });
+}
+
+async function injectAndRefreshStars() {
+    injectStars();
+    const favs = await getFavorites();
+    refreshStars(new Set(favs.map(f => f.id)));
+}
+
+if (!globalThis.__gsFavListener) {
+    globalThis.__gsFavListener = true;
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === "local" && changes.favorites && isProductPage()) {
+            getFavorites().then(favs => refreshStars(new Set(favs.map(f => f.id))));
+        }
+    });
+}
+
+/* -----------------------------
+   JUMP TO HASH + NOTICE
+------------------------------ */
+
+let listingsReady = false;
+
+function showNotice(text) {
+    document.getElementById("gs-notice")?.remove();
+    const container = document.querySelector(".table-body")?.parentElement ||
+        document.querySelector(".article-row")?.parentElement;
+    if (!container) return;
+
+    const notice = document.createElement("div");
+    notice.id = "gs-notice";
+    notice.className = "alert alert-warning alert-dismissible";
+    notice.setAttribute("role", "alert");
+    notice.appendChild(document.createTextNode(text));
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "btn-close";
+    close.setAttribute("aria-label", "Close");
+    close.addEventListener("click", () => notice.remove());
+    notice.appendChild(close);
+
+    container.prepend(notice);
+}
+
+function jumpToHash() {
+    if (!isProductPage()) return;
+    const hash = window.location.hash.slice(1);
+    if (!hash.startsWith("articleRow")) return;
+
+    const row = document.getElementById(hash);
+    if (!row) {
+        showNotice("This listing has been sold or removed.");
+        return;
+    }
+
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.style.transition = "all 0.6s ease";
+    row.style.outline = "2px solid #7c9cbf";
+    row.style.borderRadius = "4px";
+
+    setTimeout(() => {
+        row.style.outline = "";
+        row.style.borderRadius = "";
+    }, 2000);
+}
+
+window.addEventListener("hashchange", () => {
+    if (listingsReady) jumpToHash();
+});
+
+/* -----------------------------
       AUTO-SCAN ON PAGE LOAD
 ------------------------------ */
 
@@ -457,6 +560,7 @@ async function autoScan() {
     );
 
     const hits = gradedHits(scanListings(), stored.enabledCompanies);
+    await injectAndRefreshStars();
 
     // Cache results via background service worker
     // (chrome.storage.session is not available in content scripts)
@@ -469,6 +573,9 @@ async function autoScan() {
     injectFilterForm(hits);
     await injectPhotoFilter();
     applyVisibility();
+
+    listingsReady = true;
+    jumpToHash();
 }
 
 if (document.readyState === "loading") {
@@ -491,6 +598,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 }
                 await loadAllResults();
                 const hits = gradedHits(scanListings(), msg.enabledCompanies);
+                await injectAndRefreshStars();
 
                 chrome.runtime.sendMessage({
                     action: "CACHE_SCAN",
