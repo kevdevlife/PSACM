@@ -32,8 +32,22 @@ function isProductUrl() {
         !!document.querySelector(".page-title-container h1");
 }
 
+function hasArticleRows() {
+    return !!document.querySelector(".article-row");
+}
+
+// Product-only features (stars, photo filter, overview, jump) use this;
+// the graded scanner runs on any page with article rows.
 function isProductPage() {
-    return isProductUrl() && !!document.querySelector(".article-row");
+    return isProductUrl() && hasArticleRows();
+}
+
+function rowCardName(row) {
+    if (isProductUrl()) {
+        return document.querySelector(".page-title-container h1")?.textContent?.trim() || "Unknown";
+    }
+    // Lists of offers (search, seller pages): the row links to its product
+    return row.querySelector('a[href*="/Products/"]')?.textContent?.trim() || "Unknown";
 }
 
 function rowHasPhoto(row) {
@@ -43,9 +57,7 @@ function rowHasPhoto(row) {
 function readListing(row) {
     if (!row || !row.id) return null;
 
-    const cardName =
-        document.querySelector(".page-title-container h1")?.textContent?.trim() ||
-        "Unknown";
+    const cardName = rowCardName(row);
     const seller = row.querySelector(".seller-name a")?.textContent?.trim() || "";
     const conditionCode =
         row.querySelector(".article-condition .badge")?.textContent?.trim() || "";
@@ -161,6 +173,8 @@ function injectPageHighlights(hits) {
 
 const filterState = { graders: new Set(), photoOnly: false };
 
+// Only rows this extension hid (marked with data-gs-hidden) are ever shown
+// again; rows hidden by the site itself are left alone.
 function applyVisibility() {
     document.querySelectorAll(".article-row").forEach(row => {
         // Displayed grade only (dataset is set solely for enabled graders)
@@ -168,7 +182,15 @@ function applyVisibility() {
         const graderOk = filterState.graders.size === 0 ||
             (!!grader && filterState.graders.has(grader));
         const photoOk = !filterState.photoOnly || rowHasPhoto(row);
-        row.style.display = graderOk && photoOk ? "" : "none";
+        if (graderOk && photoOk) {
+            if (row.dataset.gsHidden === "1") {
+                row.style.display = "";
+                delete row.dataset.gsHidden;
+            }
+        } else if (row.dataset.gsHidden !== "1" && row.style.display !== "none") {
+            row.style.display = "none";
+            row.dataset.gsHidden = "1";
+        }
     });
 }
 
@@ -563,6 +585,12 @@ function renderOverview() {
             const b = document.createElement("span");
             b.className = "badge";
             b.textContent = r.code;
+            // Inline fallback in case the site's condition CSS doesn't apply here
+            const col = CONDITION_COLORS[r.code];
+            if (col) {
+                b.style.backgroundColor = col.bg;
+                b.style.color = col.fg;
+            }
             outer.appendChild(b);
             l.appendChild(item(outer, r.priceText));
         }
@@ -603,7 +631,7 @@ function jumpToHash() {
         showNotice("This listing has been sold or removed.");
         return;
     }
-    if (row.style.display === "none") {
+    if (row.dataset.gsHidden === "1") {
         showNotice("This listing is hidden by your filters.");
         return;
     }
@@ -627,27 +655,24 @@ window.addEventListener("hashchange", () => {
       AUTO-SCAN ON PAGE LOAD
 ------------------------------ */
 
-async function autoScan() {
-    if (!isProductUrl()) return;
-
+// One scan, shared by the page-load scan and the popup's SCAN_GRADED.
+// The graded scanner (highlights, Graded Cards filter, cache) runs on any
+// page with article rows; stars, the photo filter and the overview only on
+// product pages. A failing product-only step never aborts the scan.
+async function runScan(enabledCompanies) {
     await loadAllResults();
+    if (!hasArticleRows()) return [];
 
-    if (!isProductPage()) {
-        // No offers left at all: still report a missing target listing
-        listingsReady = true;
-        jumpToHash();
-        return;
+    const hits = gradedHits(scanListings(), enabledCompanies);
+    const productPage = isProductPage();
+
+    if (productPage) {
+        try {
+            await injectAndRefreshStars();
+        } catch (err) {
+            console.error("[Grading Scanner] stars failed:", err);
+        }
     }
-
-    const stored = await new Promise(resolve =>
-        chrome.storage.local.get(
-            { enabledCompanies: GRADING_PATTERNS.map(p => p.name) },
-            res => resolve(res)
-        )
-    );
-
-    const hits = gradedHits(scanListings(), stored.enabledCompanies);
-    await injectAndRefreshStars();
 
     // Cache results via background service worker
     // (chrome.storage.session is not available in content scripts)
@@ -658,12 +683,38 @@ async function autoScan() {
 
     injectPageHighlights(hits);
     injectFilterForm(hits);
-    await injectPhotoFilter();
+    if (productPage) {
+        try {
+            await injectPhotoFilter();
+        } catch (err) {
+            console.error("[Grading Scanner] photo filter failed:", err);
+        }
+    }
     applyVisibility();
-    safeRenderOverview();
+    if (productPage) safeRenderOverview();
 
-    listingsReady = true;
-    jumpToHash();
+    return hits;
+}
+
+async function autoScan() {
+    // Product pages always (a missing target listing is still reported);
+    // other pages only when they list articles.
+    if (!isProductUrl() && !hasArticleRows()) return;
+
+    try {
+        const stored = await new Promise(resolve =>
+            chrome.storage.local.get(
+                { enabledCompanies: GRADING_PATTERNS.map(p => p.name) },
+                res => resolve(res)
+            )
+        );
+        await runScan(stored.enabledCompanies);
+    } catch (err) {
+        console.error("[Grading Scanner] scan failed:", err);
+    } finally {
+        listingsReady = true;
+        jumpToHash();
+    }
 }
 
 if (document.readyState === "loading") {
@@ -680,24 +731,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "SCAN_GRADED") {
         (async () => {
             try {
-                if (!isProductPage()) {
-                    sendResponse({ success: true, totalGraded: 0, gradedHits: [] });
-                    return;
-                }
-                await loadAllResults();
-                const hits = gradedHits(scanListings(), msg.enabledCompanies);
-                await injectAndRefreshStars();
-
-                chrome.runtime.sendMessage({
-                    action: "CACHE_SCAN",
-                    payload: { hits, url: window.location.href, ts: Date.now() }
-                });
-
-                injectPageHighlights(hits);
-                injectFilterForm(hits);
-                await injectPhotoFilter();
-                applyVisibility();
-                safeRenderOverview();
+                const hits = await runScan(msg.enabledCompanies);
                 sendResponse({ success: true, totalGraded: hits.length, gradedHits: hits });
             } catch (err) {
                 sendResponse({ error: err.message });
