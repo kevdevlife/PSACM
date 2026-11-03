@@ -6,6 +6,8 @@
     content scripts)
 ------------------------------ */
 
+importScripts("lib/cookie-record.js");
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "CACHE_SCAN") {
         chrome.storage.session.set({ lastScan: msg.payload }, () => {
@@ -43,8 +45,26 @@ function ensureKeepAliveAlarm() {
 chrome.runtime.onInstalled.addListener(ensureKeepAliveAlarm);
 chrome.runtime.onStartup.addListener(ensureKeepAliveAlarm);
 
+// Cookies we extended are recorded (no values) under this key so they can
+// be turned back into session cookies when Remember me goes off.
+const EXTENDED_KEY = "gsExtendedCookies";
+
+// Extending and reverting both read-modify-write EXTENDED_KEY; one queue
+// keeps them from interleaving.
+let cookieQueue = Promise.resolve();
+function enqueueCookieWork(fn) {
+    cookieQueue = cookieQueue.then(fn).catch(err =>
+        console.warn("Grading Scanner cookie update failed:", err && err.message));
+    return cookieQueue;
+}
+
+async function readExtended() {
+    const res = await chrome.storage.local.get(EXTENDED_KEY);
+    return Array.isArray(res[EXTENDED_KEY]) ? res[EXTENDED_KEY] : [];
+}
+
 // Turn a Cardmarket session cookie into a 30-day cookie so the login
-// survives a browser restart. Caller has already checked rememberMe.enabled.
+// survives a browser restart. Re-checks rememberMe.enabled inside the queue.
 // The re-set cookie has an expirationDate, so it is never extended again
 // (no onChanged loop).
 function extendSessionCookie(cookie) {
@@ -53,24 +73,32 @@ function extendSessionCookie(cookie) {
     if (domain !== "cardmarket.com" && domain !== "www.cardmarket.com") return;
     if (cookie.partitionKey) return;
 
-    const details = {
-        url: "https://www.cardmarket.com" + (cookie.path || "/"),
-        name: cookie.name,
-        value: cookie.value,
-        path: cookie.path,
-        secure: cookie.secure,
-        httpOnly: cookie.httpOnly,
-        sameSite: cookie.sameSite,
-        storeId: cookie.storeId,
-        expirationDate: Math.floor(Date.now() / 1000) + COOKIE_LIFETIME_S
-    };
-    // Host-only cookies must not get a domain, or a second (domain)
-    // cookie would be created next to the original.
-    if (!cookie.hostOnly) details.domain = cookie.domain;
-    chrome.cookies.set(details, () => {
-        if (chrome.runtime.lastError) {
-            console.warn("Grading Scanner could not extend a session cookie:", chrome.runtime.lastError.message);
+    enqueueCookieWork(async () => {
+        const res = await chrome.storage.local.get("rememberMe");
+        if (!res.rememberMe || !res.rememberMe.enabled) return;
+        await chrome.cookies.set(cookieSetDetails(cookie, cookie.value,
+            Math.floor(Date.now() / 1000) + COOKIE_LIFETIME_S));
+        const list = addCookieRecord(await readExtended(), cookieRecord(cookie));
+        await chrome.storage.local.set({ [EXTENDED_KEY]: list });
+    });
+}
+
+// Remember me off or forgotten: every recorded cookie that still exists
+// becomes a session cookie again (same value, no expirationDate).
+function revertExtendedCookies() {
+    enqueueCookieWork(async () => {
+        const records = await readExtended();
+        for (const rec of records) {
+            try {
+                const found = await chrome.cookies.getAll({ name: rec.name, storeId: rec.storeId });
+                const live = (found || []).find(c => !c.partitionKey && sameCookie(c, rec));
+                if (!live || !live.expirationDate) continue;
+                await chrome.cookies.set(cookieSetDetails(live, live.value));
+            } catch (err) {
+                console.warn("Grading Scanner could not restore a session cookie:", err && err.message);
+            }
         }
+        await chrome.storage.local.remove(EXTENDED_KEY);
     });
 }
 
@@ -95,17 +123,18 @@ chrome.alarms.onAlarm.addListener(alarm => {
 
 chrome.cookies.onChanged.addListener(({ removed, cookie }) => {
     if (removed || !cookie || cookie.expirationDate) return;
-    getRememberMe(rm => {
-        if (rm && rm.enabled) extendSessionCookie(cookie);
-    });
+    // extendSessionCookie checks rememberMe.enabled itself
+    extendSessionCookie(cookie);
 });
 
 // Remember me switched on (off -> on, or a new record saved enabled): sweep now.
+// Switched off (on -> off) or forgotten (record removed): undo the extension.
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local" || !changes.rememberMe) return;
     const was = changes.rememberMe.oldValue;
     const now = changes.rememberMe.newValue;
     if (now && now.enabled && !(was && was.enabled)) sweepSessionCookies();
+    if (!now || (was && was.enabled && !now.enabled)) revertExtendedCookies();
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
