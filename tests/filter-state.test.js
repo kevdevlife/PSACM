@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
     SCALES, neutralValue, scaleSummary, scaleCaption, checkedSummary, isIncluded,
+    isToggleOptions, toggleSummary,
 } = require("../lib/filter-state.js");
 
 test("neutral value: known scales use their least strict option", () => {
@@ -20,7 +21,6 @@ test("scale summary is null at neutral", () => {
     assert.equal(scaleSummary("minCondition", "7"), null);
     assert.equal(scaleSummary("sellerReputation", "5"), null);
     assert.equal(scaleSummary("maxShippingTime", "7"), null);
-    assert.equal(scaleSummary("extra[isSigned]", "0"), null);
 });
 
 test("scale summaries read as short chips", () => {
@@ -29,8 +29,20 @@ test("scale summaries read as short chips", () => {
     assert.equal(scaleSummary("sellerReputation", "3"), "Good+ sellers");
     assert.equal(scaleSummary("sellerReputation", "1"), "Outstanding sellers");
     assert.equal(scaleSummary("maxShippingTime", "4"), "≤ 4 days delivery");
-    assert.equal(scaleSummary("extra[isSigned]", "Y"), "Signed");
-    assert.equal(scaleSummary("extra[isAltered]", "N"), "Not altered");
+});
+
+test("any Any/Yes/No select is a toggle", () => {
+    assert.equal(isToggleOptions(["0", "Y", "N"]), true);
+    assert.equal(isToggleOptions(["0", "Y"]), false);
+    assert.equal(isToggleOptions(["1", "2", "7"]), false);
+});
+
+test("toggle summaries come from the field label", () => {
+    assert.equal(toggleSummary("Signed?", "0"), null);
+    assert.equal(toggleSummary("Signed?", "Y"), "Signed");
+    assert.equal(toggleSummary("Altered?", "N"), "Not altered");
+    assert.equal(toggleSummary("Reverse Holo", "Y"), "Reverse Holo");
+    assert.equal(toggleSummary("First Edition?", "N"), "Not first edition");
 });
 
 test("unknown field or value yields null summary", () => {

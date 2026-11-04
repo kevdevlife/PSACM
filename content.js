@@ -268,7 +268,8 @@ function injectPageHighlights(hits) {
     FILTER FORM INJECTION
 ------------------------------ */
 
-const filterState = { graders: new Set(), photoOnly: false };
+// photo: "0" any, "Y" only with photo, "N" only without
+const filterState = { graders: new Set(), photo: "0" };
 
 // Sidebar rule: a section with a filter set starts open, the rest closed
 function setSectionOpen(link, collapse, open) {
@@ -285,7 +286,7 @@ function applyVisibility() {
         const grader = row.dataset.gsGrader;
         const graderOk = filterState.graders.size === 0 ||
             (!!grader && filterState.graders.has(grader));
-        const photoOk = !filterState.photoOnly || rowHasPhoto(row);
+        const photoOk = filterState.photo === "0" || rowHasPhoto(row) === (filterState.photo === "Y");
         if (graderOk && photoOk) {
             if (row.dataset.gsHidden === "1") {
                 row.style.display = "";
@@ -459,13 +460,39 @@ function injectFilterForm(hits) {
     articleFilters.insertBefore(accordionItem, articleFilters.firstChild);
 }
 
-function injectPhotoFilter() {
-    const existing = document.getElementById("gs-photo-accordion-item");
-    if (existing) existing.remove();
+// Photo is an Any/Yes/No row in the site's Extra section, built like the
+// site's own rows (label + select) so the sidebar gives it the same button
+// row as Signed / Altered. The select has no name: it is never submitted and
+// filters the loaded rows instantly. Pages without an Extra section get a
+// Photo section of their own.
+function buildPhotoRow() {
+    const row = document.createElement("div");
+    row.className = "form-group row mb-1";
 
-    const articleFilters = document.getElementById("articleFilters");
-    if (!articleFilters) return Promise.resolve();
+    const label = document.createElement("label");
+    label.className = "col-form-label col-form-label-sm col-5 d-flex align-items-center";
+    label.htmlFor = "gs-photo-select";
+    const icon = document.createElement("span");
+    icon.className = "icon fonticon-camera me-1";
+    label.append(icon, "Photo?");
 
+    const col = document.createElement("div");
+    col.className = "col-7";
+    const select = document.createElement("select");
+    select.id = "gs-photo-select";
+    select.className = "form-select form-select-sm";
+    [["0", "Any"], ["Y", "Yes"], ["N", "No"]].forEach(([value, text]) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = text;
+        select.appendChild(opt);
+    });
+    col.appendChild(select);
+    row.append(label, col);
+    return { row, select };
+}
+
+function buildPhotoSection(articleFilters, row) {
     const accordionId = "articleFilterPhoto";
 
     const item = document.createElement("div");
@@ -480,7 +507,6 @@ function injectPhotoFilter() {
     headerLink.setAttribute("data-bs-parent", "#articleFilters");
     headerLink.setAttribute("data-bs-toggle", "collapse");
     headerLink.setAttribute("aria-controls", accordionId);
-    headerLink.setAttribute("aria-expanded", "true");
 
     const h3 = document.createElement("h3");
     h3.className = "h-100 text-nowrap";
@@ -489,9 +515,7 @@ function injectPhotoFilter() {
     const name = document.createElement("span");
     name.className = "filterName text-nowrap me-1";
     name.textContent = "Photo";
-    h3.appendChild(icon);
-    h3.appendChild(document.createTextNode(" "));
-    h3.appendChild(name);
+    h3.append(icon, " ", name);
     headerLink.appendChild(h3);
     header.appendChild(headerLink);
     item.appendChild(header);
@@ -503,25 +527,7 @@ function injectPhotoFilter() {
 
     const itemBody = document.createElement("div");
     itemBody.className = "item-body-wrapper";
-
-    const formCheck = document.createElement("div");
-    formCheck.className = "form-check";
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.id = "gs-photo-cb";
-    checkbox.className = "form-check-input mb-1 me-2";
-    checkbox.style.cursor = "pointer";
-
-    const label = document.createElement("label");
-    label.htmlFor = "gs-photo-cb";
-    label.className = "form-check-label";
-    label.style.cssText = "cursor: pointer; user-select: none;";
-    label.textContent = "Only listings with photo";
-
-    formCheck.appendChild(checkbox);
-    formCheck.appendChild(label);
-    itemBody.appendChild(formCheck);
+    itemBody.appendChild(row);
     collapseDiv.appendChild(itemBody);
     item.appendChild(collapseDiv);
 
@@ -532,19 +538,45 @@ function injectPhotoFilter() {
     } else {
         articleFilters.insertBefore(item, articleFilters.firstChild);
     }
+}
 
-    checkbox.addEventListener("change", () => {
-        filterState.photoOnly = checkbox.checked;
-        chrome.storage.local.set({ photoOnly: checkbox.checked });
+function injectPhotoFilter() {
+    // Built once per page; a re-scan keeps the row and its state
+    if (document.getElementById("gs-photo-select")) return Promise.resolve();
+
+    const articleFilters = document.getElementById("articleFilters");
+    if (!articleFilters) return Promise.resolve();
+
+    const { row, select } = buildPhotoRow();
+    const extras = articleFilters.querySelector("#articleFilterProductExtras .item-body-wrapper");
+    if (extras) extras.appendChild(row);
+    else buildPhotoSection(articleFilters, row);
+
+    select.addEventListener("change", () => {
+        filterState.photo = select.value;
+        chrome.storage.local.set({ photoFilter: select.value });
         applyVisibility();
     });
 
-    // Restore persisted state
+    // Restore persisted state (photoOnly is the old on/off setting)
     return new Promise(resolve =>
-        chrome.storage.local.get({ photoOnly: false }, res => {
-            filterState.photoOnly = !!res.photoOnly;
-            checkbox.checked = filterState.photoOnly;
-            setSectionOpen(headerLink, collapseDiv, filterState.photoOnly);
+        chrome.storage.local.get({ photoFilter: null, photoOnly: false }, res => {
+            const value = ["0", "Y", "N"].includes(res.photoFilter)
+                ? res.photoFilter
+                : (res.photoOnly ? "Y" : "0");
+            if (res.photoFilter == null) {
+                chrome.storage.local.set({ photoFilter: value });
+                chrome.storage.local.remove("photoOnly");
+            }
+            filterState.photo = value;
+            select.value = value;
+            // A set filter opens its section, like every other filter
+            const collapse = select.closest(".accordion-collapse");
+            const item = collapse && collapse.closest(".accordion-item");
+            const link = item && item.querySelector(":scope > .accordion-header a");
+            if (value !== "0" && collapse && link) setSectionOpen(link, collapse, true);
+            // Ask the sidebar for the Any/Yes/No button row
+            select.dispatchEvent(new CustomEvent("gs-fx-toggle", { bubbles: true }));
             resolve();
         })
     );

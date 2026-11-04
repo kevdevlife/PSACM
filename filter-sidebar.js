@@ -6,7 +6,8 @@
 //    submitted after a short pause, with a status bar and Undo
 //  - "Active filters" chips for what the listing is filtered by right now
 //  - button rows instead of dropdowns for condition / reputation / delivery
-//    and Any/Yes/No toggles for Signed / Altered
+//    and Any/Yes/No toggles for every Yes/No select (Reverse Holo, Signed,
+//    First Edition, Altered, and the extension's own Photo)
 //  - sections at their default start closed, headings show the current
 //    value; "only" shortcut on checkbox rows
 // The site's own form fields stay the source of truth: new controls only
@@ -143,6 +144,8 @@
 
     const isNeutralVal = isNeutralFieldValue;
 
+    const isToggleSelect = el => el.tagName === "SELECT" && isToggleOptions([...el.options].map(o => o.value));
+
     function sameVal(el, a, b) {
         if (isNumberLike(el)) return (Number(a) || 0) === (Number(b) || 0);
         return a === b;
@@ -159,6 +162,12 @@
     function labelOf(el) {
         const label = el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
         return (label ? label.textContent : el.value).trim();
+    }
+
+    // Photo is the extension's own toggle (in the Extra section): it filters
+    // the loaded rows instantly instead of going through the site's form.
+    function photoSummary(v) {
+        return v === "Y" ? "With photo" : v === "N" ? "Without photo" : null;
     }
 
     /* ---------- sections ---------- */
@@ -190,6 +199,7 @@
             const v = getter(el);
             if (isNeutralVal(el, v)) return null;
             if (isNumberLike(el)) return `≥ ${v} copies`;
+            if (isToggleSelect(el)) return toggleSummary(labelOf(el), v);
             const known = scaleSummary(el.name, v);
             if (known) return known;
             const opt = [...el.options].find(o => o.value === v);
@@ -218,9 +228,10 @@
         return node;
     }
 
-    // Radio-group of buttons that drives a hidden native <select>
+    // Radio-group of buttons that drives a hidden native <select>: a scale
+    // (SCALES) or an Any/Yes/No toggle
     function buildButtonRow(select, title, render) {
-        const field = select.name;
+        const field = select.name || select.id;
         const scale = SCALES[field];
         const options = scale
             ? scale.options
@@ -327,13 +338,22 @@
         });
 
         /* button rows */
+        function addButtonRow(select, title) {
+            if (select.classList.contains("gs-fx-hidden")) return;
+            const { wrap, sync } = buildButtonRow(select, title, render);
+            select.after(wrap);
+            select.classList.add("gs-fx-hidden");
+            syncers.push(sync);
+        }
         sections.forEach(s => {
-            s.fields.filter(f => f.tagName === "SELECT" && (SCALES[f.name] || TOGGLES[f.name])).forEach(select => {
-                const { wrap, sync } = buildButtonRow(select, s.title, render);
-                select.after(wrap);
-                select.classList.add("gs-fx-hidden");
-                syncers.push(sync);
-            });
+            s.fields.filter(f => f.tagName === "SELECT" && (SCALES[f.name] || isToggleSelect(f)))
+                .forEach(select => addButtonRow(select, s.title));
+        });
+        // Toggles the extension adds later (Photo, after a scan) ask for a row
+        form.addEventListener("gs-fx-toggle", e => {
+            if (!isToggleSelect(e.target)) return;
+            addButtonRow(e.target, labelOf(e.target));
+            render();
         });
 
         /* only links on the site's checkbox groups (countries have their own picker) */
@@ -475,9 +495,10 @@
                     clear: () => on.forEach(b => setVal(b, false)),
                 });
             }
-            const photo = document.getElementById("gs-photo-cb");
-            if (photo && photo.checked) {
-                out.push({ text: "With photo", title: "Photo", clear: () => setVal(photo, false) });
+            const photo = document.getElementById("gs-photo-select");
+            const photoText = photo && photoSummary(photo.value);
+            if (photoText) {
+                out.push({ text: photoText, title: "Photo", el: photo, clear: () => setVal(photo, "0") });
             }
             return out;
         }
@@ -508,8 +529,12 @@
         function render() {
             syncers.forEach(sync => sync());
 
+            const instant = instantFilters();
             sections.forEach(s => {
-                const now = summary(s, currentVal);
+                const parts = [summary(s, currentVal)]
+                    .concat(instant.filter(f => f.el && s.collapse.contains(f.el)).map(f => f.text))
+                    .filter(Boolean);
+                const now = parts.length ? parts.join(", ") : null;
                 s.hval.textContent = now ? `· ${now}` : "";
                 s.hval.title = now || "";
             });
@@ -524,7 +549,7 @@
                     submit();
                 }));
             });
-            instantFilters().forEach(f => chipList.appendChild(chip(f.text, f.title, () => {
+            instant.forEach(f => chipList.appendChild(chip(f.text, f.title, () => {
                 f.clear();
                 render();
             })));
@@ -537,7 +562,8 @@
         });
         form.addEventListener("input", render);
 
-        // The extension's own Graded Cards / Photo sections are (re)inserted
+        // The extension's own Graded Cards section (and Photo, when the page
+        // has no Extra section) is (re)inserted
         // after a scan; give them "only" links and refresh the chips.
         new MutationObserver(() => {
             const graded = document.getElementById("gs-filter-accordion-item");
