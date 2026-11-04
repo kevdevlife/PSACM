@@ -180,3 +180,43 @@ test("seriesColors shades lower grades toward the background, capped at 60%", ()
 test("formatDate gives the short legend date", () => {
     assert.equal(H.formatDate("2026-10-20", false), "20 Oct");
 });
+
+test("dailySeries: dots mark days a listing of the grade was actually seen, by any scan", () => {
+    let r = H.mergeScan(null, scan("2026-10-01", [L("a1", 150)]));
+    r = H.mergeScan(r, scan("2026-10-03", [L("a1", 150)], { otherFilters: true }));  // filtered scan saw it (lastSeen)
+    r = H.mergeScan(r, scan("2026-10-04", [], { otherFilters: true }));              // filtered scan, not seen
+    const row = (rr, end, n) => H.dailySeries(rr, { language: "en", endDate: end, days: n })[0].days.map(d => [d.date.slice(8), d.price, d.seen]);
+    assert.deepEqual(row(r, "2026-10-04", 4), [["01", 150, true], ["02", 150, false], ["03", 150, true], ["04", 150, false]]);
+    // A price change seen by a filtered scan is a point: dot. (Same-price sightings between
+    // points are not stored, so once lastSeen moves on, 10-03 loses its dot.)
+    r = H.mergeScan(r, scan("2026-10-05", [L("a1", 140)], { languages: ["en"], otherFilters: true }));
+    assert.deepEqual(row(r, "2026-10-06", 6), [
+        ["01", 150, true], ["02", 150, false], ["03", 150, false], ["04", 150, false], ["05", 140, true], ["06", 140, false]
+    ]);
+});
+
+test("mergeScan keeps the raw language name only for unmapped languages", () => {
+    let r = H.mergeScan(null, scan("2026-10-01", [
+        { ...L("u1", 10, "lang-42"), languageName: "Klingonisch" },
+        { ...L("u2", 11, "unknown"), languageName: "Elbisch" },
+        { ...L("e1", 12, "en"), languageName: "Englisch" }
+    ]));
+    assert.equal(r.listings.u1.languageName, "Klingonisch");
+    assert.equal(r.listings.u2.languageName, "Elbisch");
+    assert.equal("languageName" in r.listings.e1, false);
+    r = H.mergeScan(r, scan("2026-10-02", [{ ...L("u1", 10, "en"), languageName: "English" }]));  // now mapped: drop it
+    assert.equal("languageName" in r.listings.u1, false);
+});
+
+test("mergeRecords and parseImport carry languageName", () => {
+    const b = H.mergeScan(null, scan("2026-10-09", [{ ...L("u1", 10, "lang-42"), languageName: "Klingon" }]));
+    assert.equal(H.mergeRecords(null, b).listings.u1.languageName, "Klingon");
+    const a = H.mergeScan(null, scan("2026-10-01", [{ ...L("u1", 12, "lang-42"), languageName: "Klingonisch" }]));
+    assert.equal(H.mergeRecords(a, b).listings.u1.languageName, "Klingon");   // later lastSeen wins
+    assert.equal(H.mergeRecords(b, a).listings.u1.languageName, "Klingon");
+    const wrap = (r) => JSON.stringify({ version: 1, products: { k: r } });
+    assert.equal(H.parseImport(wrap(b)).k.listings.u1.languageName, "Klingon");
+    const bad = JSON.parse(JSON.stringify(b));
+    bad.listings.u1.languageName = 5;
+    assert.throws(() => H.parseImport(wrap(bad)), /Not a graded history file/);
+});
