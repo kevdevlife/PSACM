@@ -157,3 +157,26 @@ test("gridCells adds faded history cells for grades without a live listing", () 
     const multi = H.gridCells([], H.lastSeenByGrade(rec(), null), { showLanguage: true });
     assert.equal(multi.find(c => c.gradeText === "PSA 9").priceText, "95,00 € · JA · 20 Oct");
 });
+
+test("yAxisTicks rounds the max up to three nice steps", () => {
+    assert.deepEqual(H.yAxisTicks(140), [0, 50, 100, 150]);
+    assert.deepEqual(H.yAxisTicks(19443), [0, 10000, 20000, 30000]);
+    assert.deepEqual(H.yAxisTicks(60), [0, 20, 40, 60]);
+    assert.deepEqual(H.yAxisTicks(7), [0, 2.5, 5, 7.5]);
+    assert.deepEqual(H.yAxisTicks(0), [0, 1, 2, 3]);
+});
+
+test("seriesColors shades lower grades toward the background, capped at 60%", () => {
+    const s = (grader, grade) => ({ grader, grade, gradeText: grader + " " + grade });
+    const c = H.seriesColors([s("PSA", "10"), s("PSA", "9"), s("PSA", "8"), s("PSA", "7"), s("PSA", "6"), s("CGC", "10")], "rgb(255, 255, 255)");
+    assert.equal(c.get("PSA 10"), "rgb(217, 83, 79)");
+    assert.equal(c.get("PSA 9"), "rgb(225, 117, 114)");
+    assert.equal(c.get("PSA 7"), c.get("PSA 6"));
+    assert.equal(c.get("CGC 10"), "rgb(255, 107, 53)");
+    assert.equal(H.seriesColors([s("PSA", "9"), s("PSA", "8")], "rgb(0, 0, 0)").get("PSA 8"), "rgb(174, 66, 63)");
+    assert.equal(H.seriesColors([s("PSA", "9")], "rgba(0, 0, 0, 0)").get("PSA 9"), "rgb(217, 83, 79)");
+});
+
+test("formatDate gives the short legend date", () => {
+    assert.equal(H.formatDate("2026-10-20", false), "20 Oct");
+});

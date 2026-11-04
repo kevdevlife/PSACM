@@ -802,6 +802,13 @@ async function runScan(enabledCompanies) {
     }
     applyVisibility();
     if (productPage) safeRenderOverview();
+    if (productPage && typeof injectGradedChart === "function") {
+        try {
+            injectGradedChart(currentHistory);
+        } catch (err) {
+            console.error("[Grading Scanner] graded chart failed:", err);
+        }
+    }
 
     return hits;
 }

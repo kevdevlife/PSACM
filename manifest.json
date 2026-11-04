@@ -35,6 +35,7 @@
                 "lib/country-search.js",
                 "lib/filter-state.js",
                 "content.js",
+                "graded-chart.js",
                 "country-select.js",
                 "filter-sidebar.js"
             ]
