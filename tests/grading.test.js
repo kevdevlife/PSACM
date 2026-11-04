@@ -49,6 +49,13 @@ test("potential wording right before the grade is not graded", () => {
         assert.equal(detectGrade(t), null, t);
     }
 });
+test("potential wording with a connector before the grade is not graded", () => {
+    for (const t of ["POTENTIAL FOR PSA10", "potential for a psa 10", "chance at psa 10",
+                     "good chance of a PSA 10", "candidate for CGC 10", "hoping for psa 10",
+                     "ready for psa 10", "Potenzial für PSA 10", "Chance auf PSA 10"]) {
+        assert.equal(detectGrade(t), null, t);
+    }
+});
 test("potential wording earlier in the text does not block a later grade", () => {
     assert.equal(detectGrade("potential buyers welcome, psa 10 slab").gradeText, "PSA 10");
 });
