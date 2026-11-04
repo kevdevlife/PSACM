@@ -94,3 +94,33 @@ test("dailySeries: window starts at a value seen before the window", () => {
 test("languagesInRecord sorted by count", () => {
     assert.deepEqual(H.languagesInRecord(rec()), [{ language: "en", count: 2 }, { language: "ja", count: 1 }]);
 });
+
+test("mergeRecords unions points and keeps the later lastSeen", () => {
+    const a = H.mergeScan(null, scan("2026-10-01", [L("a1", 150)]));
+    const b = H.mergeScan(null, scan("2026-10-09", [L("a1", 120), L("a3", 200)]));
+    const m = H.mergeRecords(a, b);
+    assert.deepEqual(m.listings.a1.points, [["2026-10-01", 150], ["2026-10-09", 120]]);
+    assert.equal(m.listings.a1.lastSeen, "2026-10-09");
+    assert.ok(m.listings.a3);
+    assert.equal(m.scans.length, 2);
+});
+
+test("mergeRecords: null side, no mutation, b wins same date", () => {
+    const b = H.mergeScan(null, scan("2026-10-09", [L("a1", 120)]));
+    const copy = JSON.parse(JSON.stringify(b));
+    const m = H.mergeRecords(null, b);
+    assert.deepEqual(m, b);
+    m.listings.a1.points.push(["x", 1]);
+    assert.deepEqual(b, copy);
+    const a = H.mergeScan(null, scan("2026-10-09", [L("a1", 100)]));
+    assert.deepEqual(H.mergeRecords(a, b).listings.a1.points, [["2026-10-09", 120]]);
+});
+
+test("parseImport rejects bad files (Review Focus 3)", () => {
+    assert.throws(() => H.parseImport("not json"), /Not a graded history file/);
+    assert.throws(() => H.parseImport('{"version":2,"products":{}}'), /Not a graded history file/);
+    assert.throws(() => H.parseImport('{"version":1,"products":{"k":{"x":1}}}'), /Not a graded history file/);
+    const exp = H.buildExport({ k: H.mergeScan(null, scan("2026-10-01", [L("a1", 1)])) }, new Date("2026-11-04T10:00:00Z"));
+    assert.deepEqual(H.parseImport(JSON.stringify(exp)), exp.products);
+    assert.deepEqual(H.historyStats(exp.products), { cards: 1, listings: 1 });
+});
