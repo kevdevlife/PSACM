@@ -345,6 +345,13 @@
             transform: translateY(-1px);
         }
 
+        /* ---- PRICE HISTORY ---- */
+        .hist-block { align-items: center; padding: 8px 16px; }
+        .hist-block .btn { flex: 0 0 auto; padding: 6px 12px; font-size: 11px; }
+        .hist-info { flex: 1; min-width: 0; }
+        .hist-count { font-size: 11px; color: var(--text-secondary); }
+        .hist-msg { font-size: 10px; color: var(--text-muted); min-height: 13px; }
+
         /* ---- RESULTS AREA ---- */
         /* Wrapper fills remaining space, owns the scroll */
         .results-wrapper {
@@ -704,6 +711,17 @@
         <button id="toggleFavs" class="btn btn-secondary">Favorites</button>
     </div>
 
+    <!-- PRICE HISTORY EXPORT / IMPORT -->
+    <div class="action-buttons hist-block">
+        <div class="hist-info">
+            <div class="hist-count" id="histCount">History: 0 cards, 0 listings</div>
+            <div class="hist-msg" id="histMsg"></div>
+        </div>
+        <button id="histExport" class="btn btn-secondary">Export</button>
+        <button id="histImport" class="btn btn-secondary">Import</button>
+        <input type="file" id="histFile" accept=".json,application/json" hidden>
+    </div>
+
     <!-- RESULTS AREA: stats bar + sticky thead + scrollable tbody -->
     <div class="results-wrapper" id="resultsWrapper">
         <!-- Stats bar injected here by JS when results arrive -->
@@ -718,6 +736,7 @@
     </div>
 
     <script src="lib/grading.js"></script>
+    <script src="lib/history.js"></script>
     <script src="lib/prices.js"></script>
     <script src="lib/favorites.js"></script>
     <script src="popup.js"></script>

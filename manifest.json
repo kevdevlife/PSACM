@@ -7,7 +7,8 @@
         "activeTab",
         "storage",
         "cookies",
-        "alarms"
+        "alarms",
+        "unlimitedStorage"
     ],
     "host_permissions": [
         "https://www.cardmarket.com/*"
@@ -29,10 +30,12 @@
             "js": [
                 "lib/grading.js",
                 "lib/prices.js",
+                "lib/history.js",
                 "lib/favorites.js",
                 "lib/country-search.js",
                 "lib/filter-state.js",
                 "content.js",
+                "graded-chart.js",
                 "country-select.js",
                 "filter-sidebar.js"
             ]

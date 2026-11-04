@@ -24,6 +24,7 @@ async function loadAllResults() {
 ------------------------------ */
 
 let currentListings = [];
+let currentHistory = null;
 
 function isProductUrl() {
     const path = window.location.pathname;
@@ -63,6 +64,7 @@ function readListing(row) {
         row.querySelector(".article-condition .badge")?.textContent?.trim() || "";
 
     let language = "";
+    let languageId = null;
     const attrs = row.querySelector(".product-attributes");
     if (attrs) {
         const icon =
@@ -71,6 +73,7 @@ function readListing(row) {
                 .find(el => !el.closest(".article-condition"));
         language = icon?.getAttribute("data-bs-original-title") ||
             icon?.getAttribute("aria-label") || "";
+        languageId = languageIdFromBackgroundPosition(icon?.style?.backgroundPosition || "");
     }
 
     const priceText =
@@ -91,6 +94,7 @@ function readListing(row) {
         seller,
         conditionCode,
         language,
+        languageCode: languageCode(languageId, language),
         priceText,
         price: parsePrice(priceText),
         hasPhoto,
@@ -104,6 +108,85 @@ function scanListings() {
         .map(readListing)
         .filter(Boolean);
     return currentListings;
+}
+
+function localDate() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/* -----------------------------
+   ACTIVE PAGE FILTERS
+   Cardmarket's saved personal filters ("Save and Apply") can be in effect on
+   a URL without a query string, so the filter form is the source of truth;
+   the URL is the fallback. Applied = the state the page was loaded with
+   (defaultChecked/defaultSelected), as in the sidebar's "Active filters".
+------------------------------ */
+
+// Active language filter as canonical codes, or null = all languages.
+// Shared by the history recorder, the graded grid and the graded chart.
+function activeLanguageFilter() {
+    const boxes = Array.from(document.querySelectorAll('#FilterForm input[type="checkbox"][name^="language["]'));
+    if (!boxes.length) return languageFilterFromSearch(window.location.search);
+    const codes = boxes
+        .filter(box => appliedValue(box) === true)
+        .map(box => {
+            const m = box.name.match(/^language\[(\d+)\]/);
+            return languageCode(Number(m ? m[1] : box.value), "");
+        });
+    return codes.length ? [...new Set(codes)] : null;
+}
+
+// Cardmarket's own filter fields, read the way filter-sidebar.js reads its sections.
+function articleFilterFields() {
+    const filters = document.querySelector("#FilterForm #articleFilters");
+    if (!filters) return [];
+    return Array.from(filters.children)
+        .filter(item => item.classList.contains("accordion-item") && !item.id.startsWith("gs-"))
+        .flatMap(item => Array.from(item.querySelectorAll(
+            ":scope > .accordion-collapse input[name], :scope > .accordion-collapse select[name]")))
+        .filter(el => el.type !== "hidden" && el.type !== "search");
+}
+
+// Any filter other than language (URL or form) hides listings from this scan.
+function hasOtherActiveFilters() {
+    return hasOtherFilters(window.location.search) ||
+        hasActiveFilters(articleFilterFields(), el => el.name.startsWith("language["));
+}
+
+// loadAllResults stops early if the button stays visible (disabled, timeout…).
+function allResultsLoaded() {
+    const btn = document.querySelector("#loadMoreButton");
+    return !btn || btn.offsetParent === null;
+}
+
+// Records today's graded sightings (all graders) for this product page.
+async function recordHistory(listings) {
+    if (!isProductPage()) return null;
+    const key = productKeyFromUrl(window.location.href);
+    if (!key) return null;
+    const storageKey = "hist:" + key;
+    const stored = await chrome.storage.local.get(storageKey);
+    const existing = stored[storageKey] || null;
+    const graded = listings.filter(l => l.grade && l.price !== null);
+    if (!existing && !graded.length) return null; // nothing to remember yet
+    const record = mergeScan(existing, {
+        today: localDate(),
+        name: document.title.replace(/\s*\|\s*Cardmarket\s*$/, "").trim(),
+        languages: activeLanguageFilter(),
+        // Not covering (can't prove a listing is gone) if filtered or only partly loaded.
+        otherFilters: hasOtherActiveFilters() || !allResultsLoaded(),
+        listings: graded.map(l => ({
+            id: l.id,
+            price: l.price,
+            language: l.languageCode,
+            languageName: l.language, // kept by mergeScan only for unmapped languages
+            grade: l.grade
+        }))
+    });
+    await chrome.storage.local.set({ [storageKey]: record });
+    return record;
 }
 
 function gradedHits(listings, enabledCompanies = null) {
@@ -563,7 +646,10 @@ function showNotice(text) {
 function renderOverview() {
     document.getElementById("gs-overview")?.remove();
     if (!isProductPage()) return;
-    const { raw, graded } = buildOverview(currentListings);
+    const { raw, graded: liveGraded } = buildOverview(currentListings);
+    const langFilter = activeLanguageFilter();
+    const lastSeen = currentHistory ? lastSeenByGrade(currentHistory, langFilter) : new Map();
+    const graded = gridCells(liveGraded, lastSeen, { showLanguage: langFilter === null || langFilter.length > 1 });
     if (!raw.length && !graded.length) return;
 
     const header = document.querySelector(".table-header");
@@ -623,8 +709,8 @@ function renderOverview() {
         const groups = [];
         for (const g of graded) {
             const last = groups[groups.length - 1];
-            if (last && last.grader === g.grader) last.byGrade.set(String(g.grade), g.priceText);
-            else groups.push({ grader: g.grader, color: g.color, byGrade: new Map([[String(g.grade), g.priceText]]) });
+            if (last && last.grader === g.grader) last.byGrade.set(String(g.grade), g);
+            else groups.push({ grader: g.grader, color: g.color, byGrade: new Map([[String(g.grade), g]]) });
         }
         const grades = [...new Set(graded.map(g => String(g.grade)))]
             .sort((a, b) => parseFloat(b) - parseFloat(a));
@@ -655,9 +741,14 @@ function renderOverview() {
             for (const grade of grades) {
                 const td = tr.insertCell();
                 td.style.cssText = CELL + PRICE_STYLE;
-                const price = grp.byGrade.get(grade);
-                if (price) {
-                    td.textContent = price;
+                const cell = grp.byGrade.get(grade);
+                if (cell) {
+                    td.textContent = cell.priceText;
+                    if (cell.faded) {
+                        td.style.opacity = "0.55";
+                        td.style.fontStyle = "italic";
+                        if (cell.title) td.title = cell.title;
+                    }
                 } else {
                     td.textContent = "–";
                     td.style.opacity = "0.4";
@@ -742,6 +833,14 @@ async function runScan(enabledCompanies) {
         payload: { hits, url: window.location.href, ts: Date.now() }
     });
 
+    if (productPage) {
+        try {
+            currentHistory = await recordHistory(currentListings);
+        } catch (err) {
+            console.error("[Grading Scanner] history failed:", err);
+        }
+    }
+
     injectPageHighlights(hits);
     injectFilterForm(hits);
     if (productPage) {
@@ -753,6 +852,13 @@ async function runScan(enabledCompanies) {
     }
     applyVisibility();
     if (productPage) safeRenderOverview();
+    if (productPage && typeof injectGradedChart === "function") {
+        try {
+            injectGradedChart(currentHistory);
+        } catch (err) {
+            console.error("[Grading Scanner] graded chart failed:", err);
+        }
+    }
 
     return hits;
 }

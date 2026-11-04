@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parsePrice, buildOverview } = require("../lib/prices.js");
+const { parsePrice, buildOverview, formatPrice } = require("../lib/prices.js");
 
 const g = (grader, grade, color = "#000") => ({ grader, grade, gradeText: grader + " " + grade, color });
 const L = (conditionCode, price, grade = null) => ({
@@ -38,4 +38,9 @@ test("null price ignored; empty input", () => {
     const o = buildOverview([L("NM", null), L("EX", null, g("PSA", "8"))]);
     assert.deepEqual(o, { raw: [], graded: [] });
     assert.deepEqual(buildOverview([]), { raw: [], graded: [] });
+});
+
+test("formatPrice", () => {
+    assert.equal(formatPrice(145), "145,00 €");
+    assert.equal(formatPrice(19443), "19.443,00 €");
 });

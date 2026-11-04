@@ -460,3 +460,95 @@ document.getElementById("scan").addEventListener("click", async () => {
 
     load();
 }
+
+/* -----------------------------
+   PRICE HISTORY EXPORT / IMPORT
+   Import is atomic: parse and merge everything first, then one set().
+   A native file dialog often closes the action popup (Windows), so from the
+   popup Import opens popup.html#import in a tab; there it picks the file.
+------------------------------ */
+
+{
+    const HIST_PREFIX = "hist:";
+    const histCount = document.getElementById("histCount");
+    const histMsg = document.getElementById("histMsg");
+    const histFile = document.getElementById("histFile");
+
+    function readHistory() {
+        return new Promise(resolve => {
+            chrome.storage.local.get(null, all => {
+                const products = {};
+                for (const key of Object.keys(all || {})) {
+                    if (key.startsWith(HIST_PREFIX)) products[key.slice(HIST_PREFIX.length)] = all[key];
+                }
+                resolve(products);
+            });
+        });
+    }
+
+    async function refreshHistCount() {
+        const { cards, listings } = historyStats(await readHistory());
+        histCount.textContent = `History: ${cards} cards, ${listings} listings`;
+    }
+
+    function pad2(n) { return String(n).padStart(2, "0"); }
+
+    document.getElementById("histExport").addEventListener("click", async () => {
+        histMsg.textContent = "";
+        try {
+            const now = new Date();
+            const data = buildExport(await readHistory(), now);
+            const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `cardmarket-graded-history-${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (e) {
+            histMsg.textContent = e.message;
+        }
+    });
+
+    async function importHistoryFile(file) {
+        histMsg.textContent = "";
+        try {
+            const imported = parseImport(await file.text());
+            const existing = await readHistory();
+            const updates = {};
+            for (const [key, rec] of Object.entries(imported)) {
+                updates[HIST_PREFIX + key] = mergeRecords(existing[key] || null, rec);
+            }
+            const n = Object.keys(updates).length;
+            await new Promise((resolve, reject) => {
+                chrome.storage.local.set(updates, () => {
+                    if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+                    else resolve();
+                });
+            });
+            histMsg.textContent = `Imported ${n} cards`;
+            await refreshHistCount();
+        } catch (e) {
+            histMsg.textContent = e.message;
+        }
+    }
+
+    const inImportTab = location.hash === "#import";
+    document.getElementById("histImport").addEventListener("click", () => {
+        histMsg.textContent = "";
+        if (!inImportTab) {
+            chrome.tabs.create({ url: chrome.runtime.getURL("popup.html#import") });
+            return;
+        }
+        histFile.value = "";
+        histFile.click();
+    });
+    histFile.addEventListener("change", () => {
+        const file = histFile.files && histFile.files[0];
+        if (file) importHistoryFile(file);
+    });
+
+    refreshHistCount();
+}
