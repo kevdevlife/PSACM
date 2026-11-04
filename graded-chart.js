@@ -48,6 +48,7 @@ function injectGradedChart(record) {
         gsChart = { record, mode: res.chartMode === "graded" ? "graded" : "cm" };
         gsSetLanguage(preferred || languages[0]);
         const targets = gsChartContainers();
+        gsInjectStyle();
         for (const { container } of targets) container.before(gsBuildSwitch());
         // Hidden tabs measure 0×0: draw (again) whenever a container gets its size.
         gsResizeObserver = new ResizeObserver(entries => {
@@ -57,6 +58,17 @@ function injectGradedChart(record) {
         for (const { container } of targets) gsResizeObserver.observe(container);
         gsApplyMode();
     });
+}
+
+// Cardmarket caps the product tabs at 375px (the image's height) and scrolls
+// the rest. The switch and the Graded legend would push the share buttons
+// out of view, so the tab that holds our switch grows to fit instead.
+function gsInjectStyle() {
+    if (document.getElementById("gs-chart-style")) return;
+    const style = document.createElement("style");
+    style.id = "gs-chart-style";
+    style.textContent = ".tab-content:has(> .tab-pane.active .gs-chart-switch) { max-height: none; height: auto; }";
+    document.head.appendChild(style);
 }
 
 function gsSetLanguage(language) {
