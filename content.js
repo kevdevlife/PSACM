@@ -24,6 +24,7 @@ async function loadAllResults() {
 ------------------------------ */
 
 let currentListings = [];
+let currentHistory = null;
 
 function isProductUrl() {
     const path = window.location.pathname;
@@ -63,6 +64,7 @@ function readListing(row) {
         row.querySelector(".article-condition .badge")?.textContent?.trim() || "";
 
     let language = "";
+    let languageId = null;
     const attrs = row.querySelector(".product-attributes");
     if (attrs) {
         const icon =
@@ -71,6 +73,7 @@ function readListing(row) {
                 .find(el => !el.closest(".article-condition"));
         language = icon?.getAttribute("data-bs-original-title") ||
             icon?.getAttribute("aria-label") || "";
+        languageId = languageIdFromBackgroundPosition(icon?.style?.backgroundPosition || "");
     }
 
     const priceText =
@@ -91,6 +94,7 @@ function readListing(row) {
         seller,
         conditionCode,
         language,
+        languageCode: languageCode(languageId, language),
         priceText,
         price: parsePrice(priceText),
         hasPhoto,
@@ -104,6 +108,35 @@ function scanListings() {
         .map(readListing)
         .filter(Boolean);
     return currentListings;
+}
+
+function localDate() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Records today's graded sightings (all graders) for this product page.
+async function recordHistory(listings) {
+    if (!isProductPage()) return null;
+    const key = productKeyFromUrl(window.location.href);
+    if (!key) return null;
+    const storageKey = "hist:" + key;
+    const stored = await chrome.storage.local.get(storageKey);
+    const record = mergeScan(stored[storageKey] || null, {
+        today: localDate(),
+        name: document.title.replace(/\s*\|\s*Cardmarket\s*$/, "").trim(),
+        languages: languageFilterFromSearch(window.location.search),
+        otherFilters: hasOtherFilters(window.location.search),
+        listings: listings.filter(l => l.grade).map(l => ({
+            id: l.id,
+            price: l.price,
+            language: l.languageCode,
+            grade: l.grade
+        }))
+    });
+    await chrome.storage.local.set({ [storageKey]: record });
+    return record;
 }
 
 function gradedHits(listings, enabledCompanies = null) {
@@ -741,6 +774,14 @@ async function runScan(enabledCompanies) {
         action: "CACHE_SCAN",
         payload: { hits, url: window.location.href, ts: Date.now() }
     });
+
+    if (productPage) {
+        try {
+            currentHistory = await recordHistory(currentListings);
+        } catch (err) {
+            console.error("[Grading Scanner] history failed:", err);
+        }
+    }
 
     injectPageHighlights(hits);
     injectFilterForm(hits);
