@@ -596,7 +596,10 @@ function showNotice(text) {
 function renderOverview() {
     document.getElementById("gs-overview")?.remove();
     if (!isProductPage()) return;
-    const { raw, graded } = buildOverview(currentListings);
+    const { raw, graded: liveGraded } = buildOverview(currentListings);
+    const langFilter = languageFilterFromSearch(location.search);
+    const lastSeen = currentHistory ? lastSeenByGrade(currentHistory, langFilter) : new Map();
+    const graded = gridCells(liveGraded, lastSeen, { showLanguage: langFilter === null || langFilter.length > 1 });
     if (!raw.length && !graded.length) return;
 
     const header = document.querySelector(".table-header");
@@ -656,8 +659,8 @@ function renderOverview() {
         const groups = [];
         for (const g of graded) {
             const last = groups[groups.length - 1];
-            if (last && last.grader === g.grader) last.byGrade.set(String(g.grade), g.priceText);
-            else groups.push({ grader: g.grader, color: g.color, byGrade: new Map([[String(g.grade), g.priceText]]) });
+            if (last && last.grader === g.grader) last.byGrade.set(String(g.grade), g);
+            else groups.push({ grader: g.grader, color: g.color, byGrade: new Map([[String(g.grade), g]]) });
         }
         const grades = [...new Set(graded.map(g => String(g.grade)))]
             .sort((a, b) => parseFloat(b) - parseFloat(a));
@@ -688,9 +691,14 @@ function renderOverview() {
             for (const grade of grades) {
                 const td = tr.insertCell();
                 td.style.cssText = CELL + PRICE_STYLE;
-                const price = grp.byGrade.get(grade);
-                if (price) {
-                    td.textContent = price;
+                const cell = grp.byGrade.get(grade);
+                if (cell) {
+                    td.textContent = cell.priceText;
+                    if (cell.faded) {
+                        td.style.opacity = "0.55";
+                        td.style.fontStyle = "italic";
+                        if (cell.title) td.title = cell.title;
+                    }
                 } else {
                     td.textContent = "–";
                     td.style.opacity = "0.4";

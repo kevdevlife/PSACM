@@ -147,3 +147,12 @@ test("mergeRecords normalizes unsorted/duplicate points", () => {
     assert.deepEqual(H.mergeRecords(null, b).listings.a.points, want);
     assert.deepEqual(H.mergeRecords({ name: "X", scans: [], listings: {} }, b).listings.a.points, want);
 });
+
+test("gridCells adds faded history cells for grades without a live listing", () => {
+    const live = [{ gradeText: "PSA 10", grader: "PSA", grade: "10", color: "#d9534f", priceText: "400,00 €" }];
+    const cells = H.gridCells(live, H.lastSeenByGrade(rec(), ["en"]), { showLanguage: false });
+    assert.deepEqual(cells.map(c => [c.gradeText, c.faded]), [["PSA 10", false], ["PSA 9", true]]);
+    assert.equal(cells[1].priceText, "140,00 € · 20 Oct");
+    const multi = H.gridCells([], H.lastSeenByGrade(rec(), null), { showLanguage: true });
+    assert.equal(multi.find(c => c.gradeText === "PSA 9").priceText, "95,00 € · JA · 20 Oct");
+});
