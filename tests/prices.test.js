@@ -34,6 +34,14 @@ test("graded lines sorted by grader then grade desc", () => {
     assert.equal(o.graded[0].priceText, "55,00 €");
 });
 
+test("graded lines carry the id of the cheapest listing", () => {
+    const o = buildOverview([
+        { ...L("NM", 60, g("PSA", "10")), id: "articleRow1" },
+        { ...L("NM", 55, g("PSA", "10")), id: "articleRow2" }
+    ]);
+    assert.equal(o.graded[0].id, "articleRow2");
+});
+
 test("null price ignored; empty input", () => {
     const o = buildOverview([L("NM", null), L("EX", null, g("PSA", "8"))]);
     assert.deepEqual(o, { raw: [], graded: [] });

@@ -757,7 +757,22 @@ function renderOverview() {
                 td.style.cssText = CELL + PRICE_STYLE;
                 const cell = grp.byGrade.get(grade);
                 if (cell) {
-                    td.textContent = cell.priceText;
+                    if (!cell.faded && cell.id) {
+                        // Live listing: jump to its row (jumpToHash scrolls + highlights).
+                        const a = document.createElement("a");
+                        a.href = "#" + cell.id;
+                        a.textContent = cell.priceText;
+                        a.title = "Go to this listing";
+                        a.addEventListener("click", e => {
+                            e.preventDefault();
+                            // Same hash fires no hashchange, so jump directly.
+                            if (window.location.hash === "#" + cell.id) jumpToHash();
+                            else window.location.hash = cell.id;
+                        });
+                        td.appendChild(a);
+                    } else {
+                        td.textContent = cell.priceText;
+                    }
                     if (cell.faded) {
                         td.style.opacity = "0.55";
                         td.style.fontStyle = "italic";
