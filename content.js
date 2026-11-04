@@ -173,6 +173,13 @@ function injectPageHighlights(hits) {
 
 const filterState = { graders: new Set(), photoOnly: false };
 
+// Sidebar rule: a section with a filter set starts open, the rest closed
+function setSectionOpen(link, collapse, open) {
+    collapse.classList.toggle("show", open);
+    link.classList.toggle("collapsed", !open);
+    link.setAttribute("aria-expanded", String(open));
+}
+
 // Only rows this extension hid (marked with data-gs-hidden) are ever shown
 // again; rows hidden by the site itself are left alone.
 function applyVisibility() {
@@ -248,7 +255,9 @@ function injectFilterForm(hits) {
     // Collapse body
     const collapseDiv = document.createElement("div");
     collapseDiv.id = accordionId;
-    collapseDiv.className = "accordion-collapse collapse show";
+    collapseDiv.className = "accordion-collapse collapse";
+    // Fresh build has no grader selected: closed, like any unset filter
+    setSectionOpen(headerLink, collapseDiv, false);
 
     const itemBody = document.createElement("div");
     itemBody.className = "item-body-wrapper";
@@ -392,7 +401,8 @@ function injectPhotoFilter() {
 
     const collapseDiv = document.createElement("div");
     collapseDiv.id = accordionId;
-    collapseDiv.className = "accordion-collapse collapse show";
+    collapseDiv.className = "accordion-collapse collapse";
+    setSectionOpen(headerLink, collapseDiv, false);
 
     const itemBody = document.createElement("div");
     itemBody.className = "item-body-wrapper";
@@ -437,6 +447,7 @@ function injectPhotoFilter() {
         chrome.storage.local.get({ photoOnly: false }, res => {
             filterState.photoOnly = !!res.photoOnly;
             checkbox.checked = filterState.photoOnly;
+            setSectionOpen(headerLink, collapseDiv, filterState.photoOnly);
             resolve();
         })
     );

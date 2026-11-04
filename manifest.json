@@ -30,7 +30,11 @@
                 "lib/grading.js",
                 "lib/prices.js",
                 "lib/favorites.js",
-                "content.js"
+                "lib/country-search.js",
+                "lib/filter-state.js",
+                "content.js",
+                "country-select.js",
+                "filter-sidebar.js"
             ]
         },
         {
