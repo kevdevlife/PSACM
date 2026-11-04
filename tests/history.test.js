@@ -153,6 +153,7 @@ test("gridCells adds faded history cells for grades without a live listing", () 
     const cells = H.gridCells(live, H.lastSeenByGrade(rec(), ["en"]), { showLanguage: false });
     assert.deepEqual(cells.map(c => [c.gradeText, c.faded]), [["PSA 10", false], ["PSA 9", true]]);
     assert.equal(cells[1].priceText, "140,00 € · 20 Oct");
+    assert.equal(cells[1].title, "Last seen 20 Oct 2026 (EN)");
     const multi = H.gridCells([], H.lastSeenByGrade(rec(), null), { showLanguage: true });
     assert.equal(multi.find(c => c.gradeText === "PSA 9").priceText, "95,00 € · JA · 20 Oct");
 });
