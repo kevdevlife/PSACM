@@ -127,14 +127,9 @@
     const isBox = el => el.type === "checkbox";
     const isNumberLike = el => el.tagName === "INPUT" && !isBox(el);
 
-    function appliedVal(el) {
-        if (isBox(el)) return el.defaultChecked;
-        if (el.tagName === "SELECT") {
-            const o = [...el.options].find(opt => opt.defaultSelected);
-            return o ? o.value : (el.options[0] ? el.options[0].value : "");
-        }
-        return el.defaultValue;
-    }
+    // Applied value and neutrality come from lib/filter-state.js, shared with
+    // the history recorder (content.js) so both agree on what is "active".
+    const appliedVal = appliedValue;
 
     function currentVal(el) {
         return isBox(el) ? el.checked : el.value;
@@ -146,10 +141,7 @@
         return "0";
     }
 
-    function isNeutralVal(el, v) {
-        if (isNumberLike(el)) return !v || Number(v) <= 0;
-        return v === neutralOf(el);
-    }
+    const isNeutralVal = isNeutralFieldValue;
 
     function sameVal(el, a, b) {
         if (isNumberLike(el)) return (Number(a) || 0) === (Number(b) || 0);
