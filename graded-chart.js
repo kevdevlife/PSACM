@@ -118,7 +118,8 @@ function gsApplyMode() {
         const extras = document.createElement("div");
         extras.className = "gs-graded-extras";
         extras.style.cssText = "display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; font-size: 12px;";
-        container.after(extras);
+        // Their .chart-wrapper has a fixed height and content follows it, so go after the wrapper.
+        (container.closest(".chart-wrapper") || container).after(extras);
         gsRenderChart(container, true);
         gsRenderExtras(extras);
     }
@@ -143,7 +144,11 @@ function gsRenderChart(container, force) {
     const div = container.querySelector(":scope > .gs-graded-chart");
     if (!div) return;
     let { w, h } = gsContainerSize(container);
-    if (w <= 0) return; // hidden tab: the ResizeObserver draws it once shown
+    if (w <= 0) { // hidden tab: clear stale drawing so the ResizeObserver redraws once shown
+        div.replaceChildren();
+        delete div.dataset.gsSize;
+        return;
+    }
     if (h <= 0) h = 250; // box sized by its (now hidden) canvas: Cardmarket's usual height
     const size = w + "x" + h;
     if (!force && div.dataset.gsSize === size) return;
