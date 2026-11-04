@@ -6,6 +6,7 @@ const GS_SVG_NS = "http://www.w3.org/2000/svg";
 const gsSavedCanvasDisplay = new Map(); // their canvas -> style.display before we hid it
 let gsChart = null; // { record, series, language, visible:Set, mode }
 let gsChartGeneration = 0;
+let gsResizeObserver = null; // redraws our SVG when a chart container changes size
 
 function gsChartContainers() {
     return Array.from(document.querySelectorAll(".chart-container"))
@@ -24,9 +25,15 @@ function gsSvg(tag, attrs) {
     return el;
 }
 
+function gsDisconnectResize() {
+    if (gsResizeObserver) gsResizeObserver.disconnect();
+    gsResizeObserver = null;
+}
+
 function injectGradedChart(record) {
     const generation = ++gsChartGeneration;
-    document.querySelectorAll(".gs-chart-switch, .gs-graded-chart").forEach(n => n.remove());
+    gsDisconnectResize();
+    document.querySelectorAll(".gs-chart-switch, .gs-graded-chart, .gs-graded-extras").forEach(n => n.remove());
     gsRestoreCanvases();
     gsChart = null;
     if (!record || !record.listings || !Object.keys(record.listings).length) return;
@@ -35,11 +42,19 @@ function injectGradedChart(record) {
     chrome.storage.local.get({ chartMode: "cm" }, res => {
         if (generation !== gsChartGeneration) return;
         const languages = languagesInRecord(record).map(l => l.language);
-        const filter = languageFilterFromSearch(location.search);
+        // Same active-language set as the grid and the history recorder (content.js).
+        const filter = activeLanguageFilter();
         const preferred = filter && filter.find(code => languages.includes(code));
         gsChart = { record, mode: res.chartMode === "graded" ? "graded" : "cm" };
         gsSetLanguage(preferred || languages[0]);
-        for (const { container } of gsChartContainers()) container.before(gsBuildSwitch());
+        const targets = gsChartContainers();
+        for (const { container } of targets) container.before(gsBuildSwitch());
+        // Hidden tabs measure 0×0: draw (again) whenever a container gets its size.
+        gsResizeObserver = new ResizeObserver(entries => {
+            if (!gsChart || gsChart.mode !== "graded") return;
+            for (const e of entries) gsRenderChart(e.target, false);
+        });
+        for (const { container } of targets) gsResizeObserver.observe(container);
         gsApplyMode();
     });
 }
@@ -84,44 +99,81 @@ function gsApplyMode() {
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", String(active));
     });
-    document.querySelectorAll(".gs-graded-chart").forEach(n => n.remove());
+    document.querySelectorAll(".gs-graded-chart, .gs-graded-extras").forEach(n => n.remove());
     if (gsChart.mode !== "graded") {
         gsRestoreCanvases();
         return;
     }
     for (const { container, canvas } of gsChartContainers()) {
-        // Measure before hiding: hidden tabs report 0×0.
-        const w = container.clientWidth, h = container.clientHeight;
-        const size = w > 0 && h > 0 ? { w, h } : { w: 450, h: 250 };
         if (!gsSavedCanvasDisplay.has(canvas)) {
             gsSavedCanvasDisplay.set(canvas, canvas.style.display);
             canvas.style.display = "none";
         }
+        // Inside their box: only our SVG, at the box's size. Picker and legend
+        // go in our own wrapper right after the box, so nothing overflows it.
         const div = document.createElement("div");
         div.className = "gs-graded-chart";
-        div.dataset.gsWidth = size.w;
-        div.dataset.gsHeight = size.h;
-        div.style.cssText = "position: relative; width: 100%; font-size: 12px;";
+        div.style.cssText = "position: relative; width: 100%; overflow: hidden; font-size: 12px;";
         container.appendChild(div);
-        gsRenderChart(div);
+        const extras = document.createElement("div");
+        extras.className = "gs-graded-extras";
+        extras.style.cssText = "display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; font-size: 12px;";
+        container.after(extras);
+        gsRenderChart(container, true);
+        gsRenderExtras(extras);
     }
 }
 
 function gsRenderAll() {
-    document.querySelectorAll(".gs-graded-chart").forEach(gsRenderChart);
+    for (const { container } of gsChartContainers()) gsRenderChart(container, true);
+    document.querySelectorAll(".gs-graded-extras").forEach(gsRenderExtras);
 }
 
-function gsRenderChart(div) {
+// The container's content box (their .chart-container has a fixed height, 250px typical).
+function gsContainerSize(container) {
+    const cs = getComputedStyle(container);
+    const px = v => parseFloat(v) || 0;
+    return {
+        w: Math.floor(container.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight)),
+        h: Math.floor(container.clientHeight - px(cs.paddingTop) - px(cs.paddingBottom)),
+    };
+}
+
+function gsRenderChart(container, force) {
+    const div = container.querySelector(":scope > .gs-graded-chart");
+    if (!div) return;
+    let { w, h } = gsContainerSize(container);
+    if (w <= 0) return; // hidden tab: the ResizeObserver draws it once shown
+    if (h <= 0) h = 250; // box sized by its (now hidden) canvas: Cardmarket's usual height
+    const size = w + "x" + h;
+    if (!force && div.dataset.gsSize === size) return;
+    div.dataset.gsSize = size;
+    div.style.height = h + "px";
     div.replaceChildren();
     const colors = seriesColors(gsChart.series, getComputedStyle(document.body).backgroundColor);
     const visible = gsChart.series.filter(s => gsChart.visible.has(s.gradeText));
+    if (visible.length) {
+        div.appendChild(gsBuildSvg(div, visible, colors, w, h));
+    } else {
+        const empty = document.createElement("div");
+        empty.className = "text-muted small";
+        empty.style.cssText = "display: flex; height: 100%; align-items: center; justify-content: center; text-align: center;";
+        empty.textContent = gsChart.series.length ? "No lines selected" : "No graded sightings yet for this language";
+        div.appendChild(empty);
+    }
+}
 
-    const header = document.createElement("div");
-    header.style.cssText = "display: flex; justify-content: flex-end; margin-bottom: 4px;";
+function gsRenderExtras(extras) {
+    extras.replaceChildren();
+    const colors = seriesColors(gsChart.series, getComputedStyle(document.body).backgroundColor);
+    const legend = gsBuildLegend(colors);
+    legend.style.flex = "1 1 auto";
+    legend.style.minWidth = "0";
     const select = document.createElement("select");
     select.className = "form-select form-select-sm";
-    select.style.cssText = "width: auto;";
+    select.style.cssText = "width: auto; flex: 0 0 auto;";
     select.title = "Language";
+    select.setAttribute("aria-label", "Graded graph language");
     for (const { language, count } of languagesInRecord(gsChart.record)) {
         const o = document.createElement("option");
         o.value = language;
@@ -133,30 +185,12 @@ function gsRenderChart(div) {
         gsSetLanguage(select.value);
         gsRenderAll();
     });
-    header.appendChild(select);
-    div.appendChild(header);
-
-    if (visible.length) {
-        div.appendChild(gsBuildSvg(div, visible, colors));
-    } else {
-        const empty = document.createElement("div");
-        empty.className = "text-muted small";
-        empty.style.cssText = "padding: 24px 0; text-align: center;";
-        empty.textContent = "No graded sightings yet for this language";
-        div.appendChild(empty);
-    }
-    div.appendChild(gsBuildLegend(colors));
+    extras.append(legend, select);
 }
 
-function gsBuildSvg(div, visible, colors) {
-    // The container has a fixed height (h-100): leave room for the header and legend rows.
-    const counts = new Map();
-    for (const s of gsChart.series) counts.set(s.grader, (counts.get(s.grader) || 0) + 1);
-    const legendRows = Math.max(0, ...counts.values());
-    const W = Number(div.dataset.gsWidth);
-    const H = Math.max(140, Number(div.dataset.gsHeight) - 40 - 20 * legendRows);
+function gsBuildSvg(div, visible, colors, W, H) {
     const pad = { left: 78, right: 12, top: 10, bottom: 24 };
-    const plotW = W - pad.left - pad.right, plotH = H - pad.top - pad.bottom;
+    const plotW = Math.max(1, W - pad.left - pad.right), plotH = Math.max(1, H - pad.top - pad.bottom);
     const n = gsChart.series[0].days.length;
     const max = Math.max(...visible.flatMap(s => s.days.map(d => d.price || 0)));
     const ticks = yAxisTicks(max);
@@ -164,8 +198,9 @@ function gsBuildSvg(div, visible, colors) {
     const x = i => pad.left + (n > 1 ? (i * plotW) / (n - 1) : plotW / 2);
     const y = v => pad.top + plotH - (v / top) * plotH;
 
-    const svg = gsSvg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Graded price history" });
-    svg.style.cssText = "display: block; width: 100%; height: auto; color: inherit; overflow: visible;";
+    // Pixel size = the container's size: no scaling, nothing past the box.
+    const svg = gsSvg("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Graded price history" });
+    svg.style.cssText = "display: block; color: inherit; overflow: hidden;";
 
     for (const t of ticks) {
         svg.appendChild(gsSvg("line", { x1: pad.left, x2: W - pad.right, y1: y(t), y2: y(t), stroke: "var(--bs-border-color)", "stroke-width": 1 }));
@@ -219,7 +254,9 @@ function gsBuildSvg(div, visible, colors) {
         const flip = left > divBox.width / 2;
         tooltip.style.left = flip ? "" : left + 10 + "px";
         tooltip.style.right = flip ? divBox.width - left + 10 + "px" : "";
-        tooltip.style.top = e.clientY - divBox.top + 10 + "px";
+        // Keep it inside the box (the chart div clips: nothing may overflow their container).
+        const top = e.clientY - divBox.top + 10;
+        tooltip.style.top = Math.max(0, Math.min(top, divBox.height - tooltip.offsetHeight - 2)) + "px";
     });
     overlay.addEventListener("mouseleave", () => {
         tooltip.style.display = "none";
@@ -237,7 +274,7 @@ function gsBuildLegend(colors) {
         byGrader.get(s.grader).push(s);
     }
     const legend = document.createElement("div");
-    legend.style.cssText = `display: grid; grid-template-columns: repeat(${byGrader.size}, minmax(0, max-content)); column-gap: 16px; margin-top: 6px;`;
+    legend.style.cssText = `display: grid; grid-template-columns: repeat(${byGrader.size}, minmax(0, max-content)); column-gap: 16px;`;
     for (const list of byGrader.values()) {
         const col = document.createElement("div");
         col.style.cssText = "display: flex; flex-direction: column; align-items: flex-start; gap: 2px;";
