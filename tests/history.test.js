@@ -124,3 +124,26 @@ test("parseImport rejects bad files (Review Focus 3)", () => {
     assert.deepEqual(H.parseImport(JSON.stringify(exp)), exp.products);
     assert.deepEqual(H.historyStats(exp.products), { cards: 1, listings: 1 });
 });
+
+test("parseImport validates records deeply", () => {
+    const good = { name: "X", scans: [["2026-10-01", null, false]], listings: { a: { grader: "PSA", grade: "9", gradeText: "PSA 9", language: "en", lastSeen: "2026-10-01", points: [["2026-10-01", 5]] } } };
+    const wrap = (r) => JSON.stringify({ version: 1, products: { k: r } });
+    assert.doesNotThrow(() => H.parseImport(wrap(good)));
+    const mut = (f) => { const r = JSON.parse(JSON.stringify(good)); f(r); return wrap(r); };
+    const bad = [
+        wrap({ listings: {} }),
+        mut((r) => { delete r.listings.a.points; }),
+        mut((r) => { r.listings.a = null; }),
+        mut((r) => { r.listings.a.points = [["2026-10-01", "5"]]; }),
+        mut((r) => { r.scans = [["x", null, false]]; }),
+        mut((r) => { r.scans = [["2026-10-01", [1], false]]; })
+    ];
+    for (const t of bad) assert.throws(() => H.parseImport(t), /Not a graded history file/);
+});
+
+test("mergeRecords normalizes unsorted/duplicate points", () => {
+    const b = { name: "X", scans: [], listings: { a: { grader: "PSA", grade: "9", gradeText: "PSA 9", language: "en", lastSeen: "2026-10-09", points: [["2026-10-09", 3], ["2026-10-01", 5], ["2026-10-09", 4]] } } };
+    const want = [["2026-10-01", 5], ["2026-10-09", 4]];
+    assert.deepEqual(H.mergeRecords(null, b).listings.a.points, want);
+    assert.deepEqual(H.mergeRecords({ name: "X", scans: [], listings: {} }, b).listings.a.points, want);
+});
