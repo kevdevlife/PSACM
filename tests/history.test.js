@@ -49,3 +49,48 @@ test("mergeScan: same-day scans merge their language sets; skips null prices; la
     assert.equal(r.listings.a2, undefined);
     assert.equal(r.listings.a1.gradeText, "PSA 10");
 });
+
+const rec = () => {
+    let r = H.mergeScan(null, scan("2026-10-01", [L("a1", 150), L("a2", 400, "en", { grader: "PSA", grade: "10", gradeText: "PSA 10" }), L("j1", 90, "ja")]));
+    r = H.mergeScan(r, scan("2026-10-20", [L("a1", 140), L("j1", 95, "ja")]));
+    return r;
+};
+
+test("lastSeenByGrade per language set", () => {
+    const all = H.lastSeenByGrade(rec(), null);
+    assert.equal(all.get("PSA 9").price, 95);        // j1 and a1 both last seen 10-20; lowest wins
+    assert.equal(all.get("PSA 9").language, "ja");
+    assert.equal(H.lastSeenByGrade(rec(), ["en"]).get("PSA 9").price, 140);
+    assert.equal(H.lastSeenByGrade(rec(), ["en"]).get("PSA 10").date, "2026-10-01");
+});
+
+test("dailySeries: carry-forward, gone after covering scan, dots on scan days", () => {
+    const s = H.dailySeries(rec(), { language: "en", endDate: "2026-10-30", days: 30 });
+    const psa9 = s.find(x => x.gradeText === "PSA 9").days;
+    const psa10 = s.find(x => x.gradeText === "PSA 10").days;
+    const day = (arr, d) => arr.find(x => x.date === d);
+    assert.equal(psa9.length, 30);
+    assert.deepEqual(day(psa9, "2026-10-01"), { date: "2026-10-01", price: 150, seen: true });
+    assert.deepEqual(day(psa9, "2026-10-10"), { date: "2026-10-10", price: 150, seen: false });
+    assert.equal(day(psa9, "2026-10-20").price, 140);
+    assert.equal(day(psa9, "2026-10-30").price, 140);   // not checked since: carried forward
+    assert.equal(day(psa10, "2026-10-19").price, 400);
+    assert.equal(day(psa10, "2026-10-20").price, null); // covering scan didn't see it: gone
+});
+
+test("dailySeries: filtered scans don't end lines (Review Focus 1, 2)", () => {
+    let r = H.mergeScan(null, scan("2026-10-01", [L("a1", 150), L("j1", 90, "ja")]));
+    r = H.mergeScan(r, scan("2026-10-05", [], { otherFilters: true }));
+    r = H.mergeScan(r, scan("2026-10-06", [L("a1", 150)], { languages: ["en"] }));
+    assert.equal(H.dailySeries(r, { language: "en", endDate: "2026-10-05", days: 1 })[0].days[0].price, 150);
+    assert.equal(H.dailySeries(r, { language: "ja", endDate: "2026-10-07", days: 1 })[0].days[0].price, 90);
+});
+
+test("dailySeries: window starts at a value seen before the window", () => {
+    const s = H.dailySeries(rec(), { language: "en", endDate: "2026-12-01", days: 30 });
+    assert.equal(s.find(x => x.gradeText === "PSA 9").days[0].price, 140);
+});
+
+test("languagesInRecord sorted by count", () => {
+    assert.deepEqual(H.languagesInRecord(rec()), [{ language: "en", count: 2 }, { language: "ja", count: 1 }]);
+});
