@@ -464,7 +464,8 @@ document.getElementById("scan").addEventListener("click", async () => {
 /* -----------------------------
    PRICE HISTORY EXPORT / IMPORT
    Import is atomic: parse and merge everything first, then one set().
-   Also works when popup.html is opened as a tab (popup.html#import).
+   A native file dialog often closes the action popup (Windows), so from the
+   popup Import opens popup.html#import in a tab; there it picks the file.
 ------------------------------ */
 
 {
@@ -512,6 +513,7 @@ document.getElementById("scan").addEventListener("click", async () => {
     });
 
     async function importHistoryFile(file) {
+        histMsg.textContent = "";
         try {
             const imported = parseImport(await file.text());
             const existing = await readHistory();
@@ -533,16 +535,20 @@ document.getElementById("scan").addEventListener("click", async () => {
         }
     }
 
-    const openPicker = () => { histFile.value = ""; histFile.click(); };
-    document.getElementById("histImport").addEventListener("click", openPicker);
+    const inImportTab = location.hash === "#import";
+    document.getElementById("histImport").addEventListener("click", () => {
+        histMsg.textContent = "";
+        if (!inImportTab) {
+            chrome.tabs.create({ url: chrome.runtime.getURL("popup.html#import") });
+            return;
+        }
+        histFile.value = "";
+        histFile.click();
+    });
     histFile.addEventListener("change", () => {
         const file = histFile.files && histFile.files[0];
         if (file) importHistoryFile(file);
     });
-
-    // Opened as a normal tab (popup.html#import): same flow, picker opens on load.
-    // Browsers may require a user gesture for the picker, so the Import button stays usable.
-    if (location.hash === "#import") histMsg.textContent = "Choose Import to select a history file.";
 
     refreshHistCount();
 }
