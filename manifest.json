@@ -38,6 +38,9 @@
                 "graded-chart.js",
                 "country-select.js",
                 "filter-sidebar.js"
+            ],
+            "css": [
+                "hide-clutter.css"
             ]
         },
         {

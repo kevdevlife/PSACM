@@ -1,0 +1,6 @@
+/* Hide Cardmarket product-page clutter: the "Sell this article" /
+   "Add to wants list" button row and the social share buttons. */
+#tabContent-info .row:has(> .col-auto > button.tab-btn),
+.shariff {
+    display: none !important;
+}
