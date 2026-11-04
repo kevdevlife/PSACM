@@ -116,6 +116,51 @@ function localDate() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/* -----------------------------
+   ACTIVE PAGE FILTERS
+   Cardmarket's saved personal filters ("Save and Apply") can be in effect on
+   a URL without a query string, so the filter form is the source of truth;
+   the URL is the fallback. Applied = the state the page was loaded with
+   (defaultChecked/defaultSelected), as in the sidebar's "Active filters".
+------------------------------ */
+
+// Active language filter as canonical codes, or null = all languages.
+// Shared by the history recorder, the graded grid and the graded chart.
+function activeLanguageFilter() {
+    const boxes = Array.from(document.querySelectorAll('#FilterForm input[type="checkbox"][name^="language["]'));
+    if (!boxes.length) return languageFilterFromSearch(window.location.search);
+    const codes = boxes
+        .filter(box => appliedValue(box) === true)
+        .map(box => {
+            const m = box.name.match(/^language\[(\d+)\]/);
+            return languageCode(Number(m ? m[1] : box.value), "");
+        });
+    return codes.length ? [...new Set(codes)] : null;
+}
+
+// Cardmarket's own filter fields, read the way filter-sidebar.js reads its sections.
+function articleFilterFields() {
+    const filters = document.querySelector("#FilterForm #articleFilters");
+    if (!filters) return [];
+    return Array.from(filters.children)
+        .filter(item => item.classList.contains("accordion-item") && !item.id.startsWith("gs-"))
+        .flatMap(item => Array.from(item.querySelectorAll(
+            ":scope > .accordion-collapse input[name], :scope > .accordion-collapse select[name]")))
+        .filter(el => el.type !== "hidden" && el.type !== "search");
+}
+
+// Any filter other than language (URL or form) hides listings from this scan.
+function hasOtherActiveFilters() {
+    return hasOtherFilters(window.location.search) ||
+        hasActiveFilters(articleFilterFields(), el => el.name.startsWith("language["));
+}
+
+// loadAllResults stops early if the button stays visible (disabled, timeout…).
+function allResultsLoaded() {
+    const btn = document.querySelector("#loadMoreButton");
+    return !btn || btn.offsetParent === null;
+}
+
 // Records today's graded sightings (all graders) for this product page.
 async function recordHistory(listings) {
     if (!isProductPage()) return null;
@@ -123,15 +168,20 @@ async function recordHistory(listings) {
     if (!key) return null;
     const storageKey = "hist:" + key;
     const stored = await chrome.storage.local.get(storageKey);
-    const record = mergeScan(stored[storageKey] || null, {
+    const existing = stored[storageKey] || null;
+    const graded = listings.filter(l => l.grade && l.price !== null);
+    if (!existing && !graded.length) return null; // nothing to remember yet
+    const record = mergeScan(existing, {
         today: localDate(),
         name: document.title.replace(/\s*\|\s*Cardmarket\s*$/, "").trim(),
-        languages: languageFilterFromSearch(window.location.search),
-        otherFilters: hasOtherFilters(window.location.search),
-        listings: listings.filter(l => l.grade).map(l => ({
+        languages: activeLanguageFilter(),
+        // Not covering (can't prove a listing is gone) if filtered or only partly loaded.
+        otherFilters: hasOtherActiveFilters() || !allResultsLoaded(),
+        listings: graded.map(l => ({
             id: l.id,
             price: l.price,
             language: l.languageCode,
+            languageName: l.language, // kept by mergeScan only for unmapped languages
             grade: l.grade
         }))
     });
@@ -597,7 +647,7 @@ function renderOverview() {
     document.getElementById("gs-overview")?.remove();
     if (!isProductPage()) return;
     const { raw, graded: liveGraded } = buildOverview(currentListings);
-    const langFilter = languageFilterFromSearch(location.search);
+    const langFilter = activeLanguageFilter();
     const lastSeen = currentHistory ? lastSeenByGrade(currentHistory, langFilter) : new Map();
     const graded = gridCells(liveGraded, lastSeen, { showLanguage: langFilter === null || langFilter.length > 1 });
     if (!raw.length && !graded.length) return;
