@@ -221,6 +221,10 @@ function styleGradeBadge(el, color) {
 function injectPageHighlights(hits) {
     // Clean up previous run
     document.querySelectorAll(".gs-grade-badge").forEach(el => el.remove());
+    document.querySelectorAll("[data-gs-replaced-condition]").forEach(el => {
+        el.style.display = "";
+        delete el.dataset.gsReplacedCondition;
+    });
     document.querySelectorAll(".article-row").forEach(row => {
         row.style.borderLeft = "";
         row.style.paddingLeft = "";
@@ -238,14 +242,24 @@ function injectPageHighlights(hits) {
         row.style.borderLeft = `3px solid ${hit.condition.color}`;
         row.style.paddingLeft = "4px";
 
-        // Grade badge at the end of the attributes (always visible)
+        // Grade badge replaces Cardmarket's condition badge (hidden, not removed,
+        // so readListing still reads the condition and cleanup can restore it).
         const attrs = row.querySelector(".product-attributes");
         if (attrs && !attrs.querySelector(".gs-grade-badge")) {
             const badge = document.createElement("span");
             badge.className = "gs-grade-badge";
             badge.textContent = hit.condition.gradeText;
             styleGradeBadge(badge, hit.condition.color);
-            attrs.appendChild(badge);
+            const cond = attrs.querySelector(".article-condition");
+            if (cond) {
+                badge.style.marginLeft = "0";
+                badge.style.marginRight = getComputedStyle(cond).marginRight;
+                cond.before(badge);
+                cond.style.display = "none";
+                cond.dataset.gsReplacedCondition = "1";
+            } else {
+                attrs.appendChild(badge);
+            }
         }
     });
 }
