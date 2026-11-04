@@ -67,7 +67,14 @@ function gsInjectStyle() {
     if (document.getElementById("gs-chart-style")) return;
     const style = document.createElement("style");
     style.id = "gs-chart-style";
-    style.textContent = ".tab-content:has(> .tab-pane.active .gs-chart-switch) { max-height: none; height: auto; }";
+    // The switch borrows the quiet look of their period <select> (theme vars,
+    // so it follows light/dark) instead of the loud gold outline buttons.
+    style.textContent = ".tab-content:has(> .tab-pane.active .gs-chart-switch) { max-height: none; height: auto; }"
+        + " .gs-chart-switch .btn {"
+        + " --bs-btn-color: var(--bs-secondary-color); --bs-btn-bg: transparent; --bs-btn-border-color: var(--bs-border-color);"
+        + " --bs-btn-hover-color: var(--bs-body-color); --bs-btn-hover-bg: var(--bs-tertiary-bg); --bs-btn-hover-border-color: var(--bs-border-color);"
+        + " --bs-btn-active-color: var(--bs-body-color); --bs-btn-active-bg: var(--bs-tertiary-bg); --bs-btn-active-border-color: var(--bs-border-color);"
+        + " text-transform: none; font-weight: normal; letter-spacing: normal; box-shadow: none; }";
     document.head.appendChild(style);
 }
 
@@ -91,7 +98,7 @@ function gsBuildSwitch() {
     for (const [mode, label] of [["cm", "Cardmarket avg"], ["graded", "Graded"]]) {
         const b = document.createElement("button");
         b.type = "button";
-        b.className = "btn btn-outline-secondary";
+        b.className = "btn";
         b.dataset.gsMode = mode;
         b.textContent = label;
         b.addEventListener("click", () => {
